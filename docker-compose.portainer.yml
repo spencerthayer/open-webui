@@ -1,0 +1,34 @@
+# Portainer Git deploy for searchable Workspace base-model picker
+#
+# Repository: https://github.com/spencerthayer/open-webui
+# Reference: feat/workspace-searchable-base-model-picker
+# Compose path: docker-compose.portainer.yml
+#
+# Do NOT deploy commit 8f23196f alone — it only adds selectionOnly to the chat
+# picker and does not replace the Workspace <select> in ModelEditor.svelte.
+#
+# Redeploy with "Pull and redeploy" / rebuild so the Svelte frontend is compiled
+# from this branch (ghcr.io/open-webui/open-webui:latest will not include the change).
+
+services:
+  open-webui:
+    container_name: open-webui
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - '11480:8080'
+    environment:
+      TZ: America/Los_Angeles
+      PUID: '1000'
+      PGID: '1000'
+      OLLAMA_BASE_URLS: ''
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+    volumes:
+      - /appdata/openwebui:/app/backend/data
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:8080/healthz']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
