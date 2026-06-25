@@ -127,6 +127,15 @@
 								type: 'file',
 								data: data
 							});
+						} else if (type === 'knowledge-directory') {
+							insertTextHandler('');
+
+							for (const file of data.files ?? []) {
+								onUpload({
+									type: 'file',
+									data: file
+								});
+							}
 						} else if (type === 'web') {
 							insertTextHandler('');
 
