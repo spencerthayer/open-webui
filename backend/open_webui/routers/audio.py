@@ -28,6 +28,8 @@ from fastapi import (
 )
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
+
+# pydub needs stdlib audioop (gone in 3.13); keep requires-python capped < 3.13
 from pydub import AudioSegment
 from pydub.silence import split_on_silence
 from pydub.utils import mediainfo
@@ -289,8 +291,8 @@ async def update_audio_config(request: Request, form_data: AudioConfigUpdateForm
     )
 
     if form_data.stt.ENGINE == '':
-        request.app.state.faster_whisper_model = set_faster_whisper_model(
-            form_data.stt.WHISPER_MODEL, WHISPER_MODEL_AUTO_UPDATE
+        request.app.state.faster_whisper_model = await asyncio.to_thread(
+            set_faster_whisper_model, form_data.stt.WHISPER_MODEL, WHISPER_MODEL_AUTO_UPDATE
         )
     else:
         request.app.state.faster_whisper_model = None
@@ -439,8 +441,8 @@ async def _tts_azure(request, payload, file_path, file_body_path, user):
     output_format = await Config.get('audio.tts.azure.speech_output_format')
 
     ssml = (
-        f'<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="{locale}">'
-        f'<voice name="{language}">{html.escape(payload["input"])}</voice>'
+        f'<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="{html.escape(locale)}">'
+        f'<voice name="{html.escape(language)}">{html.escape(payload["input"])}</voice>'
         f'</speak>'
     )
 
@@ -470,7 +472,7 @@ async def _tts_transformers(request, payload, file_path, file_body_path, user):
     import soundfile as sf
     import torch
 
-    load_speech_pipeline(request)
+    await asyncio.to_thread(load_speech_pipeline, request)
 
     embeddings = request.app.state.speech_speaker_embeddings_dataset
     model_name = await Config.get('audio.tts.model')
@@ -557,9 +559,7 @@ async def speech(request: Request, user=Depends(get_verified_user)):
             detail=ERROR_MESSAGES.NOT_FOUND,
         )
 
-    if user.role != 'admin' and not await has_permission(
-        user.id, 'chat.tts', await Config.get('user.permissions')
-    ):
+    if user.role != 'admin' and not await has_permission(user.id, 'chat.tts', await Config.get('user.permissions')):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=ERROR_MESSAGES.ACCESS_PROHIBITED,
@@ -612,7 +612,9 @@ async def speech(request: Request, user=Depends(get_verified_user)):
 
 async def _transcribe_whisper(request, file_path, languages, file_dir, id):
     if request.app.state.faster_whisper_model is None:
-        request.app.state.faster_whisper_model = set_faster_whisper_model(await Config.get('audio.stt.whisper_model'))
+        request.app.state.faster_whisper_model = await asyncio.to_thread(
+            set_faster_whisper_model, await Config.get('audio.stt.whisper_model')
+        )
 
     model = request.app.state.faster_whisper_model
 
@@ -1050,7 +1052,7 @@ async def transcribe(request: Request, file_path: str, metadata: Optional[dict] 
             log.exception(e)
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=ERROR_MESSAGES.DEFAULT(e),
+                detail=ERROR_MESSAGES.DEFAULT(e, 'Error processing audio file'),
             )
 
     results = []
@@ -1147,9 +1149,7 @@ async def transcription(
     language: Optional[str] = Form(None),
     user=Depends(get_verified_user),
 ):
-    if user.role != 'admin' and not await has_permission(
-        user.id, 'chat.stt', await Config.get('user.permissions')
-    ):
+    if user.role != 'admin' and not await has_permission(user.id, 'chat.stt', await Config.get('user.permissions')):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=ERROR_MESSAGES.ACCESS_PROHIBITED,
@@ -1187,8 +1187,12 @@ async def transcription(
         if not os.path.realpath(file_path).startswith(os.path.realpath(file_dir)):
             raise ValueError('Invalid file path detected')
 
-        with open(file_path, 'wb') as f:
-            f.write(contents)
+        def _write_upload():
+            with open(file_path, 'wb') as f:
+                f.write(contents)
+
+        # Audio uploads can be large; write to disk off the event loop.
+        await asyncio.to_thread(_write_upload)
 
         try:
             metadata = None

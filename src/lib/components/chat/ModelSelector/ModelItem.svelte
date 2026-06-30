@@ -22,14 +22,14 @@
 	export let selectedModelIdx: number = -1;
 	export let item: any = {};
 	export let index: number = -1;
-	export let value: string = '';
+	export let value: string | null = '';
 
 	export let unloadModelHandler: (modelValue: string) => void = () => {};
 	export let pinModelHandler: (modelId: string) => void = () => {};
 	export let deleteModelHandler: (model: any) => void = () => {};
+	export let selectionOnly = false;
 
 	export let onClick: () => void = () => {};
-	export let selectionOnly = false;
 
 	const copyLinkHandler = async (model) => {
 		const baseUrl = window.location.origin;
@@ -280,7 +280,6 @@
 				</button>
 			</ModelItemMenu>
 		{/if}
-
 		{#if value === item.value}
 			<div>
 				<Check className="size-3" />

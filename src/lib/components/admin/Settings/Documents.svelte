@@ -318,6 +318,7 @@
 				: config.EXTERNAL_DOCUMENT_LOADER_HEADERS;
 
 		config.MINERU_FILE_EXTENSIONS = (config?.MINERU_FILE_EXTENSIONS ?? ['pdf']).join(', ');
+		config.RAG_TOKENIZER_MODEL = config?.RAG_TOKENIZER_MODEL ?? '';
 
 		RAGConfig = config;
 	});
@@ -759,6 +760,21 @@
 									bind:value={RAGConfig.MISTRAL_OCR_API_KEY}
 								/>
 							</div>
+							<div class="flex justify-between w-full mt-2 pr-2">
+								<div class="self-center text-xs font-medium">
+									<Tooltip
+										content={$i18n.t(
+											'Send the PDF as a base64 data URL instead of uploading it first.'
+										)}
+										placement="top-start"
+									>
+										{$i18n.t('Use Base64')}
+									</Tooltip>
+								</div>
+								<div class="flex items-center">
+									<Switch bind:state={RAGConfig.MISTRAL_OCR_USE_BASE64} />
+								</div>
+							</div>
 						{:else if RAGConfig.CONTENT_EXTRACTION_ENGINE === 'paddleocr_vl'}
 							<div class="my-0.5 flex gap-2 pr-2">
 								<input
@@ -910,9 +926,29 @@
 								>
 									<option value="">{$i18n.t('Default')} ({$i18n.t('Character')})</option>
 									<option value="token">{$i18n.t('Token')} ({$i18n.t('Tiktoken')})</option>
+									<option value="token_transformers">
+										{$i18n.t('Token')} ({$i18n.t('Transformers')})
+									</option>
 								</select>
 							</div>
 						</div>
+
+						{#if RAGConfig.TEXT_SPLITTER === 'token_transformers'}
+							<div class="mb-2.5 flex flex-col w-full justify-between">
+								<div class="self-center text-xs font-medium min-w-fit mb-1 w-full">
+									{$i18n.t('Tokenizer Model')}
+								</div>
+								<div class="self-center w-full">
+									<input
+										class="w-full rounded-lg py-1.5 px-4 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-hidden"
+										placeholder={$i18n.t('Enter Tokenizer Model')}
+										bind:value={RAGConfig.RAG_TOKENIZER_MODEL}
+										autocomplete="off"
+										required={RAG_EMBEDDING_ENGINE !== ''}
+									/>
+								</div>
+							</div>
+						{/if}
 
 						<div class="  mb-2.5 flex w-full justify-between">
 							<div class=" self-center text-xs font-medium">

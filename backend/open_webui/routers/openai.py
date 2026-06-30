@@ -209,7 +209,7 @@ async def get_headers_and_cookies(
         headers['Authorization'] = f'Bearer {token}'
 
     if config.get('headers') and isinstance(config.get('headers'), dict):
-        custom_headers = get_custom_headers(config.get('headers'), user, metadata)
+        custom_headers = get_custom_headers(config.get('headers'), user, metadata, request=request)
         headers.update(custom_headers)
 
     return headers, cookies
@@ -237,6 +237,28 @@ def get_microsoft_entra_id_access_token():
 ##########################################
 
 router = APIRouter()
+
+LLAMACPP_LOADED_STATES = {'loaded', 'sleeping'}
+LLAMACPP_UNLOADED_STATES = {'loading', 'unloaded'}
+
+
+def get_llamacpp_model_loaded_state(model: dict, provider: str, manual_model_ids: bool = False) -> bool | None:
+    if provider != 'llama.cpp':
+        return None
+
+    status = model.get('status')
+    if isinstance(status, dict):
+        value = status.get('value')
+        if value in LLAMACPP_LOADED_STATES:
+            return True
+        if value in LLAMACPP_UNLOADED_STATES:
+            return False
+
+    if not manual_model_ids and 'status' not in model:
+        return True
+
+    return None
+
 
 OPENAI_CONFIG_KEYS = {
     'ENABLE_OPENAI_API': 'openai.enable',
@@ -334,9 +356,7 @@ async def update_config(request: Request, form_data: OpenAIConfigForm, user=Depe
 
 @router.post('/audio/speech')
 async def speech(request: Request, user=Depends(get_verified_user)):
-    if user.role != 'admin' and not await has_permission(
-        user.id, 'chat.tts', await Config.get('user.permissions')
-    ):
+    if user.role != 'admin' and not await has_permission(user.id, 'chat.tts', await Config.get('user.permissions')):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=ERROR_MESSAGES.ACCESS_PROHIBITED,
@@ -522,12 +542,14 @@ async def get_filtered_models(models, user, db=None):
 
 @cached(
     ttl=MODELS_CACHE_TTL,
-    key=lambda _, user: f'openai_all_models_{user.id}' if user else 'openai_all_models',
+    # key_builder (not key) is the per-call hook in aiocache 0.12; `key=` is a
+    # static key, so a `key=lambda` collapsed every caller to one shared entry.
+    key_builder=lambda _func, request, user=None: f'openai_all_models_{user.id}' if user else 'openai_all_models',
 )
 async def get_all_models(request: Request, user: UserModel) -> dict[str, list]:
     log.info('get_all_models()')
 
-    enable_openai_api, api_base_urls, _, _ = await get_openai_runtime_config()
+    enable_openai_api, api_base_urls, _, api_configs = await get_openai_runtime_config()
     if not enable_openai_api:
         return {'data': []}
 
@@ -571,21 +593,25 @@ async def get_all_models(request: Request, user: UserModel) -> dict[str, list]:
                         continue
 
                     if model_id and model_id not in models:
+                        api_config = api_configs.get(str(idx), api_configs.get(base_url, {}))
+                        provider = model.get('provider', '')
                         merged = {
                             **model,
                             'name': model.get('name', model_id),
                             'owned_by': 'openai',
                             'openai': model,
                             'connection_type': model.get('connection_type', 'external'),
-                            'provider': model.get('provider', ''),
+                            'provider': provider,
                             'urlIdx': idx,
                         }
 
-                        # llama.cpp router mode: derive loaded state from
-                        # the status object returned by GET /v1/models.
-                        status = model.get('status')
-                        if isinstance(status, dict) and 'value' in status:
-                            merged['loaded'] = status['value'] in ('loaded', 'sleeping')
+                        loaded = get_llamacpp_model_loaded_state(
+                            model,
+                            provider,
+                            manual_model_ids=bool(api_config.get('model_ids')),
+                        )
+                        if loaded is not None:
+                            merged['loaded'] = loaded
 
                         models[model_id] = merged
 

@@ -291,6 +291,7 @@ if 'postgres://' in DATABASE_URL:
     DATABASE_URL = DATABASE_URL.replace('postgres://', 'postgresql://')
 
 DATABASE_SCHEMA = os.getenv('DATABASE_SCHEMA', None)
+DATABASE_ENABLE_IAM_TOKEN_AUTH = os.getenv('DATABASE_ENABLE_IAM_TOKEN_AUTH', 'False').lower() == 'true'
 
 _pool_size_raw = os.getenv('DATABASE_POOL_SIZE')
 try:
@@ -598,9 +599,7 @@ except (ValueError, TypeError):
 # SSL verification for tool server connections specifically.
 # Accepts "True", "False", or a path to a CA bundle file.
 # When "True", falls back to AIOHTTP_CLIENT_SSL_CERT_FILE if set.
-AIOHTTP_CLIENT_SESSION_TOOL_SERVER_SSL = _parse_ssl_env(
-    os.getenv('AIOHTTP_CLIENT_SESSION_TOOL_SERVER_SSL', 'True')
-)
+AIOHTTP_CLIENT_SESSION_TOOL_SERVER_SSL = _parse_ssl_env(os.getenv('AIOHTTP_CLIENT_SESSION_TOOL_SERVER_SSL', 'True'))
 
 AIOHTTP_CLIENT_TIMEOUT_TOOL_SERVER = os.getenv('AIOHTTP_CLIENT_TIMEOUT_TOOL_SERVER', '')
 
@@ -683,6 +682,8 @@ WEBUI_SECRET_KEY = os.getenv(
     os.getenv('WEBUI_JWT_SECRET_KEY', ''),
 )
 
+ENABLE_VALVE_ENCRYPTION = os.getenv('ENABLE_VALVE_ENCRYPTION', 'False').lower() == 'true'
+
 WEBUI_SESSION_COOKIE_SAME_SITE = os.getenv('WEBUI_SESSION_COOKIE_SAME_SITE', 'lax')
 WEBUI_SESSION_COOKIE_SECURE = os.getenv('WEBUI_SESSION_COOKIE_SECURE', 'false').lower() == 'true'
 WEBUI_AUTH_COOKIE_SAME_SITE = os.getenv('WEBUI_AUTH_COOKIE_SAME_SITE', WEBUI_SESSION_COOKIE_SAME_SITE)
@@ -729,6 +730,7 @@ WEBUI_AUTH_TRUSTED_ROLE_HEADER = os.getenv('WEBUI_AUTH_TRUSTED_ROLE_HEADER', Non
 CUSTOM_API_KEY_HEADER = os.getenv('CUSTOM_API_KEY_HEADER', 'x-api-key')
 
 ENABLE_PASSWORD_VALIDATION = os.getenv('ENABLE_PASSWORD_VALIDATION', 'False').lower() == 'true'
+PASSWORD_HASH_ALGORITHM = os.getenv('PASSWORD_HASH_ALGORITHM', 'bcrypt').lower()
 PASSWORD_VALIDATION_REGEX_PATTERN = os.getenv(
     'PASSWORD_VALIDATION_REGEX_PATTERN',
     r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^\w\s]).{8,}$',
@@ -753,6 +755,9 @@ BYPASS_RETRIEVAL_ACCESS_CONTROL = os.getenv('BYPASS_RETRIEVAL_ACCESS_CONTROL', '
 # for non-admin users.  When False (default), unknown collection names are
 # denied — closing the legacy unscoped namespace.
 ENABLE_RETRIEVAL_UNSCOPED_COLLECTIONS = os.getenv('ENABLE_RETRIEVAL_UNSCOPED_COLLECTIONS', 'False').lower() == 'true'
+MINERU_MAX_MARKDOWN_BYTES = (
+    int(os.getenv('MINERU_MAX_MARKDOWN_BYTES')) if os.getenv('MINERU_MAX_MARKDOWN_BYTES') else None
+)
 
 # When enabled, skips pydub-based preprocessing (format conversion, compression,
 # and chunked splitting) before sending files to processing engines. Useful when
@@ -929,6 +934,7 @@ else:
 ENABLE_CHAT_RESPONSE_BASE64_IMAGE_URL_CONVERSION = (
     os.getenv('ENABLE_CHAT_RESPONSE_BASE64_IMAGE_URL_CONVERSION', 'False').lower() == 'true'
 )
+ENABLE_API_OUTLET_FILTERS = os.getenv('ENABLE_API_OUTLET_FILTERS', 'True').lower() == 'true'
 
 # When enabled, uses a hardcoded extension-to-MIME dictionary as a last-resort
 # fallback when both mimetypes.guess_type() and file.meta.content_type fail to
@@ -1051,6 +1057,12 @@ OFFLINE_MODE = os.getenv('OFFLINE_MODE', 'false').lower() == 'true'
 if OFFLINE_MODE:
     os.environ['HF_HUB_OFFLINE'] = '1'
     ENABLE_VERSION_UPDATE_CHECK = False
+
+####################################
+# Pyodide file persistence
+####################################
+
+ENABLE_PYODIDE_FILE_PERSISTENCE = os.getenv('ENABLE_PYODIDE_FILE_PERSISTENCE', 'false').lower() == 'true'
 
 ####################################
 # Audit logging

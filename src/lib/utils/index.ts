@@ -254,6 +254,23 @@ export const sanitizeHistory = (history) => {
 		}
 	}
 
+	// Recover currentId before role reconstruction can make a malformed node
+	// look valid.
+	const initialCurrentMessage = history.messages?.[history.currentId];
+	if (!initialCurrentMessage?.id || !initialCurrentMessage?.role) {
+		let latestLeafId = null;
+		let latestTimestamp = -1;
+
+		for (const [id, message] of Object.entries(history.messages)) {
+			if (message.childrenIds.length === 0 && (message.timestamp ?? 0) > latestTimestamp) {
+				latestLeafId = id;
+				latestTimestamp = message.timestamp ?? 0;
+			}
+		}
+
+		history.currentId = latestLeafId ?? Object.keys(history.messages)[0] ?? null;
+	}
+
 	const detachedMessageIds = new Set();
 
 	// Reconstruct missing parentId and role
@@ -335,8 +352,11 @@ export const sanitizeHistory = (history) => {
 	};
 
 	// Recover currentId if it points to a missing, incomplete, or detached node
-	const currentMessage = history.messages?.[history.currentId];
-	if (!currentMessage?.id || !currentMessage?.role || !reachableIds.has(history.currentId)) {
+	if (
+		!history.messages?.[history.currentId]?.id ||
+		!history.messages?.[history.currentId]?.role ||
+		!reachableIds.has(history.currentId)
+	) {
 		const latestLeafId =
 			getLatestLeafId(reachableIds) ?? getLatestLeafId(new Set(Object.keys(history.messages)));
 		history.currentId = latestLeafId ?? Object.keys(history.messages)[0] ?? null;
@@ -1974,7 +1994,8 @@ export const initMermaid = async () => {
 	mermaid.initialize({
 		startOnLoad: false, // Should be false when using render API
 		theme: document.documentElement.classList.contains('dark') ? 'dark' : 'default',
-		securityLevel: 'loose'
+		securityLevel: 'loose',
+		htmlLabels: false
 	});
 	return mermaid;
 };
@@ -2046,11 +2067,23 @@ export const renderMermaidDiagram = async (
 	}
 };
 
-export const renderVegaVisualization = async (spec: string, i18n?: any) => {
+export const renderVegaVisualization = async (spec: string, lang: string = '', i18n?: any) => {
 	const vega = await import('vega');
 	const parsedSpec = JSON.parse(spec);
+	const hasVegaLiteKeys =
+		'mark' in parsedSpec ||
+		'encoding' in parsedSpec ||
+		'layer' in parsedSpec ||
+		'hconcat' in parsedSpec ||
+		'vconcat' in parsedSpec ||
+		'repeat' in parsedSpec ||
+		'facet' in parsedSpec;
+	const isVegaLite =
+		lang === 'vega-lite' ||
+		(parsedSpec.$schema && parsedSpec.$schema.includes('vega-lite')) ||
+		hasVegaLiteKeys;
 	let vegaSpec = parsedSpec;
-	if (parsedSpec.$schema && parsedSpec.$schema.includes('vega-lite')) {
+	if (isVegaLite) {
 		const vegaLite = await import('vega-lite');
 		vegaSpec = vegaLite.compile(parsedSpec).spec;
 	}

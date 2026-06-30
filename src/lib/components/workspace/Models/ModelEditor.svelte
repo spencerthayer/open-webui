@@ -10,8 +10,11 @@
 	import { getFunctions } from '$lib/apis/functions';
 	import { getModelsDefaults } from '$lib/apis/configs';
 	import { getModels } from '$lib/apis';
+	import { getBaseModelTags, getModelTags } from '$lib/apis/models';
+	import { getVoices } from '$lib/apis/audio';
 
 	import AdvancedParams from '$lib/components/chat/Settings/Advanced/AdvancedParams.svelte';
+	import ModelSelector from '$lib/components/chat/ModelSelector/Selector.svelte';
 	import Tags from '$lib/components/common/Tags.svelte';
 	import Knowledge from '$lib/components/workspace/Models/Knowledge.svelte';
 	import ToolsSelector from '$lib/components/workspace/Models/ToolsSelector.svelte';
@@ -35,6 +38,7 @@
 		toBaseModelSelectorValue
 	} from './baseModelPicker';
 	import TerminalSelector from './TerminalSelector.svelte';
+	import TTSVoiceInput from './TTSVoiceInput.svelte';
 	import AccessControlModal from '../common/AccessControlModal.svelte';
 	import LockClosed from '$lib/components/icons/LockClosed.svelte';
 	import { updateModelAccessGrants } from '$lib/apis/models';
@@ -115,6 +119,39 @@
 	let accessGrants = [];
 	let terminalId = '';
 	let tts = { voice: '' };
+	export let suggestionTags: { name: string }[] = [];
+	let voices: { id: string; name?: string }[] = [];
+
+	const getBaseModelItems = (models: any[] = []) => {
+		const currentModelId = (model as any)?.id;
+
+		return models
+			.filter(
+				(baseModel) =>
+					(!currentModelId || baseModel.id !== currentModelId) &&
+					!baseModel?.preset &&
+					baseModel?.owned_by !== 'arena' &&
+					!(baseModel?.direct ?? false) &&
+					(!(baseModel?.info?.meta?.hidden ?? false) || baseModel.id === info.base_model_id)
+			)
+			.map((baseModel) => ({
+				value: baseModel.id,
+				label: baseModel.name,
+				model: baseModel
+			}));
+	};
+
+	const loadSuggestionTags = async () => {
+		const res: string[] = await (preset ? getModelTags : getBaseModelTags)(
+			localStorage.token
+		).catch(() => []);
+		suggestionTags = res.map((tag) => ({ name: tag }));
+	};
+
+	const loadVoices = async () => {
+		const res = await getVoices(localStorage.token).catch(() => null);
+		voices = res?.voices ?? [];
+	};
 
 	let baseModelSelectorValue = '';
 	let baseModelValidationError = false;
@@ -294,6 +331,12 @@
 					$config?.features?.enable_direct_connections && ($settings?.directConnections ?? null)
 				)
 			);
+		}
+		if (suggestionTags.length === 0) {
+			await loadSuggestionTags();
+		}
+		if (voices.length === 0) {
+			await loadVoices();
 		}
 
 		// Fetch admin-configured default model metadata so the editor
@@ -708,6 +751,7 @@
 								<div class="">
 									<Tags
 										tags={info?.meta?.tags ?? []}
+										{suggestionTags}
 										on:delete={(e) => {
 											const tagName = e.detail;
 											info.meta.tags = info.meta.tags.filter((tag) => tag.name !== tagName);
@@ -899,10 +943,9 @@
 								{$i18n.t('TTS Voice')}
 							</div>
 						</div>
-						<input
-							class="w-full text-sm bg-transparent outline-hidden"
-							type="text"
+						<TTSVoiceInput
 							bind:value={tts.voice}
+							{voices}
 							placeholder={$i18n.t('e.g. alloy, echo, shimmer')}
 						/>
 					</div>
