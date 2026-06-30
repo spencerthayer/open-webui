@@ -310,3 +310,11 @@ dist
 cypress/videos
 cypress/screenshots
 .vscode/settings.json
+.cptr
+
+# IDE's and Agents
+*.code-workspace
+.vscode/
+.cursor/
+.claude/
+.codex/

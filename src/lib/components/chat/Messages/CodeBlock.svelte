@@ -440,7 +440,7 @@
 		{#if ['mermaid', 'vega', 'vega-lite'].includes(lang)}
 			{#if renderHTML}
 				<SvgPanZoom
-					className=" rounded-2xl max-h-fit overflow-hidden"
+					className=" rounded-2xl max-h-fit "
 					svg={renderHTML}
 					content={_token.text}
 				/>
@@ -563,8 +563,10 @@
 								result) &&
 								'border-bottom-left-radius: 0px; border-bottom-right-radius: 0px;'}"><code
 								class="language-{lang} rounded-t-none whitespace-pre text-sm"
-								>{@html hljs.highlightAuto(code, hljs.getLanguage(lang)?.aliases).value ||
-									code}</code
+								>{#if lang && hljs.getLanguage(lang)}{@html hljs.highlight(code, {
+										language: lang,
+										ignoreIllegals: true
+									}).value}{:else}{code}{/if}</code
 							></pre>
 					{/if}
 				{:else}
