@@ -266,6 +266,7 @@
 				id: id
 			})
 		);
+		event.dataTransfer.setData('application/x-open-webui-drag', '');
 
 		dragged = true;
 		itemElement.style.opacity = '0.5'; // Optional: Visual cue to show it's being dragged
@@ -540,7 +541,7 @@
 					<img
 						src="/api/v1/users/{ownerUserId}/profile/image"
 						alt=""
-						class="size-4 rounded-full shrink-0 object-cover mr-1.5"
+						class="size-3.5 rounded-full shrink-0 object-cover mr-1.5"
 					/>
 				</Tooltip>
 			{/if}

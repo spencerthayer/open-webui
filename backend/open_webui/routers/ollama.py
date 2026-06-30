@@ -38,7 +38,7 @@ from open_webui.models.models import Models
 from open_webui.models.users import UserModel
 from open_webui.utils.access_control import check_model_access
 from open_webui.utils.auth import get_admin_user, get_verified_user
-from open_webui.utils.headers import include_user_info_headers
+from open_webui.utils.headers import get_custom_headers, include_user_info_headers
 from open_webui.utils.misc import calculate_sha256
 from open_webui.utils.payload import (
     apply_model_params_to_body_ollama,
@@ -99,6 +99,8 @@ async def send_request(
     stream: bool = False,
     content_type: str | None = None,
     metadata: dict | None = None,
+    api_config: dict | None = None,
+    request: Request | None = None,
 ):
     r = None
     streaming = False
@@ -114,6 +116,10 @@ async def send_request(
             headers = include_user_info_headers(headers, user)
             if metadata and metadata.get('chat_id'):
                 headers[FORWARD_SESSION_INFO_HEADER_CHAT_ID] = metadata.get('chat_id')
+
+        # Custom per-connection headers last so admin-set headers take precedence.
+        if api_config and api_config.get('headers'):
+            headers.update(get_custom_headers(api_config['headers'], user, metadata, request=request))
 
         r = await session.request(
             method,
@@ -336,7 +342,9 @@ def resolve_api_config(api_configs: dict, idx: int, url: str) -> dict:
 
 @cached(
     ttl=MODELS_CACHE_TTL,
-    key=lambda _, user: f'ollama_all_models_{user.id}' if user else 'ollama_all_models',
+    # key_builder (not key) is the per-call hook in aiocache 0.12; `key=` is a
+    # static key, so a `key=lambda` collapsed every caller to one shared entry.
+    key_builder=lambda _func, request, user=None: f'ollama_all_models_{user.id}' if user else 'ollama_all_models',
 )
 async def get_all_models(request: Request, user: UserModel | None = None):
     """Aggregate model tags from every enabled Ollama backend."""
@@ -349,8 +357,10 @@ async def get_all_models(request: Request, user: UserModel | None = None):
 
     # Fan-out tag requests to every backend
     tasks = []
-    for idx, url in enumerate(await Config.get('ollama.base_urls', [])):
-        api_config = resolve_api_config((await Config.get('ollama.api_configs', {})), idx, url)
+    base_urls = await Config.get('ollama.base_urls', [])
+    api_configs = await Config.get('ollama.api_configs', {})
+    for idx, url in enumerate(base_urls):
+        api_config = resolve_api_config(api_configs, idx, url)
         if not api_config:
             tasks.append(send_get_request(f'{url}/api/tags', user=user))
         elif api_config.get('enable', True):
@@ -360,12 +370,16 @@ async def get_all_models(request: Request, user: UserModel | None = None):
 
     responses = await asyncio.gather(*tasks)
 
+    # Track which backends failed so we can skip them for /api/ps
+    failed_idxs: set[int] = set()
+
     # Post-process each response: apply prefix_id, tags, model filtering
     for idx, response in enumerate(responses):
         if not response:
+            failed_idxs.add(idx)
             continue
-        url = (await Config.get('ollama.base_urls', []))[idx]
-        api_config = resolve_api_config((await Config.get('ollama.api_configs', {})), idx, url)
+        url = base_urls[idx]
+        api_config = resolve_api_config(api_configs, idx, url)
 
         connection_type = api_config.get('connection_type', 'local')
         prefix_id = api_config.get('prefix_id')
@@ -387,7 +401,7 @@ async def get_all_models(request: Request, user: UserModel | None = None):
 
     # Annotate with expiry info from loaded-model state
     try:
-        loaded = await get_ollama_loaded_models(request, user=user)
+        loaded = await get_ollama_loaded_models(request, user=user, skip_idxs=failed_idxs)
         expires_map = {m['model']: m['expires_at'] for m in loaded['models'] if 'expires_at' in m}
         for m in models_dict['models']:
             if m['model'] in expires_map:
@@ -449,14 +463,20 @@ async def get_ollama_tags(
 async def get_ollama_loaded_models(
     request: Request,
     user=Depends(get_admin_user),
+    skip_idxs: set[int] | None = None,
 ) -> dict:
     """List models currently loaded in Ollama memory across all backends."""
     if not await Config.get('ollama.enable'):
         return {'models': []}
 
     tasks = []
-    for idx, url in enumerate(await Config.get('ollama.base_urls', [])):
-        api_config = resolve_api_config((await Config.get('ollama.api_configs', {})), idx, url)
+    base_urls = await Config.get('ollama.base_urls', [])
+    api_configs = await Config.get('ollama.api_configs', {})
+    for idx, url in enumerate(base_urls):
+        if skip_idxs and idx in skip_idxs:
+            tasks.append(asyncio.ensure_future(asyncio.sleep(0, None)))
+            continue
+        api_config = resolve_api_config(api_configs, idx, url)
         if not api_config:
             tasks.append(send_get_request(f'{url}/api/ps', user=user))
         elif api_config.get('enable', True):
@@ -469,7 +489,7 @@ async def get_ollama_loaded_models(
     for idx, response in enumerate(responses):
         if not response:
             continue
-        api_config = resolve_api_config((await Config.get('ollama.api_configs', {})), idx, (await Config.get('ollama.base_urls', []))[idx])
+        api_config = resolve_api_config(api_configs, idx, base_urls[idx])
         prefix_id = api_config.get('prefix_id')
         if prefix_id:
             for m in response.get('models', []):
@@ -1098,6 +1118,8 @@ async def generate_chat_completion(
         stream=form_data.stream,
         content_type='application/x-ndjson',
         metadata=metadata,
+        api_config=api_config,
+        request=request,
     )
 
 
@@ -1183,6 +1205,8 @@ async def generate_openai_completion(
         user=user,
         stream=payload.get('stream', False),
         metadata=metadata,
+        api_config=api_config,
+        request=request,
     )
 
 
@@ -1240,6 +1264,8 @@ async def generate_openai_chat_completion(
         user=user,
         stream=payload.get('stream', False),
         metadata=metadata,
+        api_config=api_config,
+        request=request,
     )
 
 
@@ -1292,6 +1318,8 @@ async def generate_anthropic_messages(
         user=user,
         stream=payload.get('stream', False),
         content_type='text/event-stream' if payload.get('stream', False) else None,
+        api_config=api_config,
+        request=request,
     )
 
 
@@ -1350,6 +1378,8 @@ async def generate_responses(
         user=user,
         stream=payload.get('stream', False),
         content_type='text/event-stream' if payload.get('stream', False) else None,
+        api_config=api_config,
+        request=request,
     )
 
 
@@ -1443,10 +1473,13 @@ async def download_file_stream(
 
             if done:
                 f.close()
-                hashed = calculate_sha256(file_path, chunk_size)
+                hashed = await asyncio.to_thread(calculate_sha256, file_path, chunk_size)
 
-                with open(file_path, 'rb') as blob_f:
-                    blob_data = blob_f.read()
+                def _read_blob():
+                    with open(file_path, 'rb') as blob_f:
+                        return blob_f.read()
+
+                blob_data = await asyncio.to_thread(_read_blob)
 
                 blob_url = f'{ollama_url}/api/blobs/sha256:{hashed}'
                 async with session.post(
@@ -1507,12 +1540,16 @@ async def upload_model(
 
     # Stage 1: persist the uploaded file to disk
     chunk_size = 1024 * 1024 * 2  # 2 MiB
-    with open(file_path, 'wb') as out_f:
-        while True:
-            chunk = file.file.read(chunk_size)
-            if not chunk:
-                break
-            out_f.write(chunk)
+
+    def _persist_upload():
+        with open(file_path, 'wb') as out_f:
+            while True:
+                chunk = file.file.read(chunk_size)
+                if not chunk:
+                    break
+                out_f.write(chunk)
+
+    await asyncio.to_thread(_persist_upload)
 
     async def file_process_stream():
         nonlocal ollama_url
@@ -1520,7 +1557,7 @@ async def upload_model(
         log.info(f'Total Model Size: {total_size}')
 
         # Stage 2: hash the file and emit SSE progress
-        file_hash = calculate_sha256(file_path, chunk_size)
+        file_hash = await asyncio.to_thread(calculate_sha256, file_path, chunk_size)
         log.info(f'Model Hash: {file_hash}')
 
         try:
@@ -1532,8 +1569,11 @@ async def upload_model(
                     yield f'data: {json.dumps({"progress": progress, "total": total_size, "completed": bytes_read})}\n\n'
 
             # Stage 3: push blob to Ollama
-            with open(file_path, 'rb') as f:
-                blob_data = f.read()
+            def _read_blob():
+                with open(file_path, 'rb') as f:
+                    return f.read()
+
+            blob_data = await asyncio.to_thread(_read_blob)
 
             session = await get_session()
             blob_url = f'{ollama_url}/api/blobs/sha256:{file_hash}'
