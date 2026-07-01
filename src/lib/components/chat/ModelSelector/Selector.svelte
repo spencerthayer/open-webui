@@ -10,7 +10,7 @@
 	import ConfirmDialog from '$lib/components/common/ConfirmDialog.svelte';
 	import { flyAndScale } from '$lib/utils/transitions';
 
-	import { createEventDispatcher, onMount, getContext, tick } from 'svelte';
+	import { createEventDispatcher, getContext, tick } from 'svelte';
 	import { goto } from '$app/navigation';
 
 	import { deleteModel, getOllamaVersion, pullModel } from '$lib/apis/ollama';
@@ -51,6 +51,7 @@
 	export let searchEnabled = true;
 	export let searchPlaceholder = $i18n.t('Search a model');
 	export let selectionOnly = false;
+	export let includeHidden = false;
 
 	export let items: {
 		label: string;
@@ -243,7 +244,7 @@
 							return item.model?.direct;
 						}
 					})
-	).filter((item) => !(item.model?.info?.meta?.hidden ?? false));
+	).filter((item) => includeHidden || !(item.model?.info?.meta?.hidden ?? false));
 
 	$: if (
 		selectedTag !== undefined ||
@@ -415,7 +416,7 @@
 
 	$: if (selectorItems) {
 		tags = selectorItems
-			.filter((item) => !(item.model?.info?.meta?.hidden ?? false))
+			.filter((item) => includeHidden || !(item.model?.info?.meta?.hidden ?? false))
 			.flatMap((item) => item.model?.tags ?? [])
 			.map((tag) => tag.name.toLowerCase());
 		tags = Array.from(new Set(tags)).sort((a, b) => a.localeCompare(b));
@@ -622,7 +623,7 @@
 					{/if}
 
 					<div class="px-2">
-						{#if tags && selectorItems.filter((item) => !(item.model?.info?.meta?.hidden ?? false)).length > 0}
+						{#if tags && selectorItems.filter((item) => includeHidden || !(item.model?.info?.meta?.hidden ?? false)).length > 0}
 							<div
 								class=" flex w-full bg-white dark:bg-gray-850 overflow-x-auto scrollbar-none font-[450] mb-0.5"
 								on:wheel={(e) => {

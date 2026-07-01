@@ -128,11 +128,15 @@
 		return models
 			.filter(
 				(baseModel) =>
-					(!currentModelId || baseModel.id !== currentModelId) &&
-					!baseModel?.preset &&
+					(!currentModelId ||
+						baseModel.id !== currentModelId ||
+						(edit && baseModel.id === info.base_model_id)) &&
+					(!baseModel?.preset || (edit && baseModel.id === info.base_model_id)) &&
 					baseModel?.owned_by !== 'arena' &&
 					!(baseModel?.direct ?? false) &&
-					(!(baseModel?.info?.meta?.hidden ?? false) || baseModel.id === info.base_model_id)
+					($user?.role === 'admin' ||
+						!(baseModel?.info?.meta?.hidden ?? false) ||
+						baseModel.id === info.base_model_id)
 			)
 			.map((baseModel) => ({
 				value: baseModel.id,
@@ -697,6 +701,7 @@
 											className="w-[32rem]"
 											triggerClassName="text-sm"
 											selectionOnly
+											includeHidden={$user?.role === 'admin'}
 											ariaInvalid={baseModelValidationError}
 											ariaDescribedBy={baseModelValidationError ? 'workspace-base-model-error' : ''}
 										/>
