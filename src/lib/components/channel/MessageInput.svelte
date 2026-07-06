@@ -906,7 +906,7 @@
 											{placeholder}
 											richText={$settings?.richTextInput ?? true}
 											showFormattingToolbar={$settings?.showFormattingToolbar ?? false}
-											shiftEnter={!($settings?.ctrlEnterToSend ?? false) &&
+											shiftEnter={!($settings?.ctrlEnterToSend ?? true) &&
 												!$mobile &&
 												!(
 													'ontouchstart' in window ||
@@ -939,16 +939,20 @@
 													) {
 														// Prevent Enter key from creating a new line
 														// Uses keyCode '13' for Enter key for chinese/japanese keyboards
-														if (e.keyCode === 13 && !e.shiftKey) {
+														//
+														// Depending on the user's settings, it will send the message
+														// either when Enter is pressed or when Ctrl+Enter is pressed.
+														const enterPressed =
+															($settings?.ctrlEnterToSend ?? true)
+																? (e.key === 'Enter' || e.keyCode === 13) && isCtrlPressed
+																: (e.key === 'Enter' || e.keyCode === 13) && !e.shiftKey;
+
+														if (enterPressed) {
 															e.preventDefault();
 														}
 
 														// Submit the content when Enter key is pressed
-														if (
-															(content !== '' || files.length > 0) &&
-															e.keyCode === 13 &&
-															!e.shiftKey
-														) {
+														if ((content !== '' || files.length > 0) && enterPressed) {
 															submitHandler();
 														}
 													}

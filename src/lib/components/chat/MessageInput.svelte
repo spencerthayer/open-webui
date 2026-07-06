@@ -1532,7 +1532,7 @@
 													showFormattingToolbar={$settings?.showFormattingToolbar ?? false}
 													floatingMenuPlacement={'top-start'}
 													insertPromptAsRichText={$settings?.insertPromptAsRichText ?? false}
-													shiftEnter={!($settings?.ctrlEnterToSend ?? false) &&
+													shiftEnter={!($settings?.ctrlEnterToSend ?? true) &&
 														!$mobile &&
 														!(
 															'ontouchstart' in window ||
@@ -1616,9 +1616,9 @@
 																// Depending on the user's settings, it will send the message
 																// either when Enter is pressed or when Ctrl+Enter is pressed.
 																const enterPressed =
-																	($settings?.ctrlEnterToSend ?? false)
-																		? (e.key === 'Enter' || e.keyCode === 13) && isCtrlPressed
-																		: (e.key === 'Enter' || e.keyCode === 13) && !e.shiftKey;
+($settings?.ctrlEnterToSend ?? true)
+										? (e.key === 'Enter' || e.keyCode === 13) && isCtrlPressed
+										: (e.key === 'Enter' || e.keyCode === 13) && !e.shiftKey;
 
 																if (enterPressed) {
 																	e.preventDefault();

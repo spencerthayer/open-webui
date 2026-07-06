@@ -261,7 +261,7 @@
 		stylizedPdfExport = $settings?.stylizedPdfExport ?? true;
 
 		hapticFeedback = $settings?.hapticFeedback ?? false;
-		ctrlEnterToSend = $settings?.ctrlEnterToSend ?? false;
+		ctrlEnterToSend = $settings?.ctrlEnterToSend ?? true;
 
 		showFloatingActionButtons = $settings?.showFloatingActionButtons ?? true;
 		floatingActionButtons = $settings?.floatingActionButtons ?? null;
