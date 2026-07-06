@@ -85,6 +85,18 @@
 					on:submit|preventDefault={() => {
 						submitHandler();
 					}}
+					on:keydown={(e) => {
+						if (e.key === 'Enter') {
+							if (e.ctrlKey || e.metaKey) {
+								e.preventDefault();
+								submitHandler();
+								return;
+							}
+							if (e.target.tagName !== 'TEXTAREA') {
+								e.preventDefault();
+							}
+						}
+					}}
 				>
 					<div class="px-1">
 						{#if !loading}

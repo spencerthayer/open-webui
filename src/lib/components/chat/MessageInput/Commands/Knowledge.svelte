@@ -157,7 +157,7 @@
 			<button
 				class=" px-2 py-1 rounded-xl w-full text-left flex justify-between items-center {idx ===
 				selectedIdx
-					? ' bg-gray-50 dark:bg-gray-800 dark:text-gray-100 selected-command-option-button'
+					? ' bg-gray-100 dark:bg-gray-700 dark:text-gray-100 selected-command-option-button'
 					: ''}"
 				type="button"
 				on:click={() => {
@@ -204,7 +204,7 @@
 
 	{#if isYoutubeUrl(query)}
 		<button
-			class="px-2 py-1 rounded-xl w-full text-left bg-gray-50 dark:bg-gray-800 dark:text-gray-100 selected-command-option-button"
+			class="px-2 py-1 rounded-xl w-full text-left bg-gray-100 dark:bg-gray-700 dark:text-gray-100 selected-command-option-button"
 			type="button"
 			data-selected={selectedIdx === filteredItems.findIndex((i) => i.type === 'youtube')}
 			on:click={() => {
@@ -232,7 +232,7 @@
 		</button>
 	{:else if query.startsWith('http')}
 		<button
-			class="px-2 py-1 rounded-xl w-full text-left bg-gray-50 dark:bg-gray-800 dark:text-gray-100 selected-command-option-button"
+			class="px-2 py-1 rounded-xl w-full text-left bg-gray-100 dark:bg-gray-700 dark:text-gray-100 selected-command-option-button"
 			type="button"
 			data-selected={selectedIdx === filteredItems.findIndex((i) => i.type === 'web')}
 			on:click={() => {
