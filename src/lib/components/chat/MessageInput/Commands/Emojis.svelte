@@ -71,7 +71,7 @@
 	{#each filteredItems as emoji, emojiIdx}
 		<button
 			class="px-2.5 py-1.5 rounded-xl w-full text-left {emojiIdx === selectedIdx
-				? 'bg-gray-50 dark:bg-gray-800 selected-command-option-button'
+				? 'bg-gray-100 dark:bg-gray-700 selected-command-option-button'
 				: ''}"
 			type="button"
 			on:click={() => {

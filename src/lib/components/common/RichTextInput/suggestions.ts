@@ -12,12 +12,13 @@ export function getSuggestionRenderer(Component: any, ComponentProps = {}) {
 		let refEl: HTMLDivElement | null = null; // dummy reference
 
 		return {
-			onStart: (props: any) => {
+			// onBeforeStart runs synchronously before the async items() call,
+			// so the component is available immediately for onKeyDown.
+			onBeforeStart: (props: any) => {
 				container = document.createElement('div');
 				container.className = 'suggestion-list-container';
 				document.body.appendChild(container);
 
-				// mount Svelte component
 				component = createClassComponent({
 					component: Component,
 					target: container,
@@ -31,7 +32,9 @@ export function getSuggestionRenderer(Component: any, ComponentProps = {}) {
 					},
 					context: new Map<string, any>([['i18n', ComponentProps?.i18n]])
 				});
+			},
 
+			onStart: (props: any) => {
 				// Create a tiny reference element so outside taps are truly "outside"
 				refEl = document.createElement('div');
 				Object.assign(refEl.style, {
