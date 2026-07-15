@@ -20,7 +20,7 @@
 	import { getToolServerData } from '$lib/apis';
 	import { verifyToolServerConnection, registerOAuthClient } from '$lib/apis/configs';
 	import AccessControlModal from '$lib/components/workspace/common/AccessControlModal.svelte';
-	import LockClosed from '$lib/components/icons/LockClosed.svelte';
+	import AccessButton from '$lib/components/common/AccessButton.svelte';
 	import Spinner from '$lib/components/common/Spinner.svelte';
 	import XMark from '$lib/components/icons/XMark.svelte';
 	import Textarea from './common/Textarea.svelte';
@@ -444,8 +444,8 @@
 
 <Modal size="sm" bind:show>
 	<div>
-		<div class=" flex justify-between dark:text-gray-100 px-5 pt-4 pb-2">
-			<h1 class=" text-lg font-medium self-center font-primary">
+		<div class=" flex justify-between dark:text-gray-100 px-4 pt-3 pb-1">
+			<h1 class=" text-sm font-medium self-center">
 				{#if edit}
 					{$i18n.t('Edit Connection')}
 				{:else}
@@ -470,13 +470,13 @@
 					</button>
 				</div>
 				<button
-					class="self-center"
+					class="self-center rounded-lg p-1 text-gray-500 transition hover:bg-gray-50 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-200"
 					aria-label={$i18n.t('Close Configure Connection Modal')}
 					on:click={() => {
 						show = false;
 					}}
 				>
-					<XMark className={'size-5'} />
+					<XMark className={'size-4'} />
 				</button>
 			</div>
 		</div>
@@ -622,7 +622,7 @@
 										className="shrink-0 flex items-center mr-1"
 									>
 										<button
-											class="self-center p-1 bg-transparent hover:bg-gray-100 dark:hover:bg-gray-850 rounded-lg transition"
+											class="self-center p-1 bg-transparent hover:bg-gray-50/70 dark:hover:bg-gray-850/50 rounded-lg transition"
 											on:click={() => {
 												verifyHandler();
 											}}
@@ -686,13 +686,13 @@
 
 											{#if !oauthClientInfo}
 												<div
-													class="text-xs font-medium px-1.5 rounded-md bg-yellow-500/20 text-yellow-700 dark:text-yellow-200"
+													class="text-xs font-normal px-1.5 rounded-md bg-yellow-500/20 text-yellow-700 dark:text-yellow-200"
 												>
 													{$i18n.t('Not Registered')}
 												</div>
 											{:else}
 												<div
-													class="text-xs font-medium px-1.5 rounded-md bg-green-500/20 text-green-700 dark:text-green-200"
+													class="text-xs font-normal px-1.5 rounded-md bg-green-500/20 text-green-700 dark:text-green-200"
 												>
 													{$i18n.t('Registered')}
 												</div>
@@ -804,19 +804,12 @@
 							</button>
 
 							{#if !direct}
-								<button
-									class="bg-gray-50 hover:bg-gray-100 text-black dark:bg-gray-850 dark:hover:bg-gray-800 dark:text-white transition px-2 py-1 object-cover rounded-full flex gap-1 items-center mt-2"
-									type="button"
+								<AccessButton
+									className="mt-2"
 									on:click={() => {
 										showAccessControlModal = true;
 									}}
-								>
-									<LockClosed strokeWidth="2.5" className="size-3.5 shrink-0" />
-
-									<div class="text-xs font-medium shrink-0">
-										{$i18n.t('Access')}
-									</div>
-								</button>
+								/>
 							{/if}
 						</div>
 
@@ -999,24 +992,24 @@
 						<div
 							class=" bg-yellow-500/20 text-yellow-700 dark:text-yellow-200 rounded-2xl text-xs px-4 py-3 mb-2 mt-1"
 						>
-							<span class="font-medium">
+							<span class="font-normal">
 								{$i18n.t('Warning')}:
 							</span>
 							{$i18n.t(
 								'MCP support is experimental and its specification changes often, which can lead to incompatibilities. OpenAPI specification support is directly maintained by the Open WebUI team, making it the more reliable option for compatibility.'
 							)}
 
-							<a class="font-medium underline" href="https://docs.openwebui.com/" target="_blank"
+							<a class="font-normal underline" href="https://docs.openwebui.com/" target="_blank"
 								>{$i18n.t('Read more →')}</a
 							>
 						</div>
 					{/if}
 
-					<div class="flex justify-between items-center pt-3 text-sm font-medium">
+					<div class="flex justify-between items-center pt-3 text-sm font-normal">
 						<div>
 							{#if edit}
 								<button
-									class="px-1 py-1.5 text-sm font-medium text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:underline transition"
+									class="px-1 py-1.5 text-sm font-normal text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:underline transition"
 									type="button"
 									on:click={() => {
 										showDeleteConfirmDialog = true;
@@ -1028,7 +1021,7 @@
 						</div>
 
 						<button
-							class="px-3.5 py-1.5 text-sm font-medium bg-black hover:bg-gray-900 text-white dark:bg-white dark:text-black dark:hover:bg-gray-100 transition rounded-full flex items-center gap-2 whitespace-nowrap {loading
+							class="px-3.5 py-1.5 text-sm font-normal bg-black hover:bg-gray-900 text-white dark:bg-white dark:text-black dark:hover:bg-gray-100 transition rounded-full flex items-center gap-2 whitespace-nowrap {loading
 								? ' cursor-not-allowed'
 								: ''}"
 							type="submit"

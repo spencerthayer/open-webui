@@ -2,29 +2,14 @@
 	import fileSaver from 'file-saver';
 	const { saveAs } = fileSaver;
 
-	import {
-		chatId,
-		chats,
-		user,
-		settings,
-		scrollPaginationEnabled,
-		currentChatPage,
-		pinnedChats
-	} from '$lib/stores';
+	import { user } from '$lib/stores';
+	import { refreshChatList } from '$lib/stores/chat-list';
 
-	import {
-		archiveAllChats,
-		deleteAllChats,
-		getAllChats,
-		getChatList,
-		getPinnedChatList,
-		importChats
-	} from '$lib/apis/chats';
+	import { archiveAllChats, deleteAllChats, getAllChats, importChats } from '$lib/apis/chats';
 	import { getImportOrigin, convertOpenAIChats } from '$lib/utils';
-	import { onMount, getContext } from 'svelte';
+	import { getContext } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { toast } from 'svelte-sonner';
-	import ArchivedChatsModal from '$lib/components/layout/ArchivedChatsModal.svelte';
 	import SharedChatsModal from '$lib/components/layout/SharedChatsModal.svelte';
 	import FilesModal from '$lib/components/layout/FilesModal.svelte';
 	import ConfirmDialog from '$lib/components/common/ConfirmDialog.svelte';
@@ -38,7 +23,6 @@
 
 	let showArchiveConfirmDialog = false;
 	let showDeleteConfirmDialog = false;
-	let showArchivedChatsModal = false;
 	let showSharedChatsModal = false;
 	let showFilesModal = false;
 
@@ -96,10 +80,7 @@
 			toast.success(`Successfully imported ${res.length} chats.`);
 		}
 
-		currentChatPage.set(1);
-		await chats.set(await getChatList(localStorage.token, $currentChatPage));
-		pinnedChats.set(await getPinnedChatList(localStorage.token));
-		scrollPaginationEnabled.set(true);
+		await refreshChatList(localStorage.token, { refreshPinned: true });
 	};
 
 	const exportChats = async () => {
@@ -115,10 +96,7 @@
 			toast.error(`${error}`);
 		});
 
-		currentChatPage.set(1);
-		await chats.set(await getChatList(localStorage.token, $currentChatPage));
-		pinnedChats.set([]);
-		scrollPaginationEnabled.set(true);
+		await refreshChatList(localStorage.token, { clearPinned: true });
 	};
 
 	const deleteAllChatsHandler = async () => {
@@ -127,29 +105,10 @@
 			toast.error(`${error}`);
 		});
 
-		currentChatPage.set(1);
-		await chats.set(await getChatList(localStorage.token, $currentChatPage));
-		scrollPaginationEnabled.set(true);
-	};
-
-	const handleArchivedChatsChange = async () => {
-		currentChatPage.set(1);
-		await chats.set(await getChatList(localStorage.token, $currentChatPage));
-
-		scrollPaginationEnabled.set(true);
+		await refreshChatList(localStorage.token);
 	};
 </script>
 
-<ArchivedChatsModal
-	bind:show={showArchivedChatsModal}
-	onUpdate={handleArchivedChatsChange}
-	onDelete={(id) => {
-		if ($chatId === id) {
-			goto('/');
-			chatId.set('');
-		}
-	}}
-/>
 <SharedChatsModal bind:show={showSharedChatsModal} />
 <FilesModal bind:show={showFilesModal} />
 
@@ -173,8 +132,12 @@
 	}}
 />
 
-<div id="tab-chats" class="flex flex-col h-full justify-between text-sm">
-	<div class="space-y-3 overflow-y-scroll max-h-[28rem] md:max-h-full">
+<div id="tab-chats" class="flex flex-col h-full text-sm">
+	<h2 class="text-sm font-medium text-gray-900 dark:text-white mb-4">
+		{$i18n.t('Data Controls')}
+	</h2>
+
+	<div class="flex-1 min-h-0 overflow-y-auto scrollbar-hover pr-1.5 space-y-3">
 		<input
 			id="chat-import-input"
 			bind:this={chatImportInputElement}
@@ -185,7 +148,7 @@
 		/>
 
 		<div>
-			<div class="mb-1 text-sm font-medium">{$i18n.t('Chats')}</div>
+			<div class="text-xs text-gray-400 dark:text-gray-600 mb-2">{$i18n.t('Chats')}</div>
 
 			{#if $user?.role === 'admin' || ($user.permissions?.chat?.import ?? true)}
 				<div>
@@ -220,21 +183,6 @@
 					</div>
 				</div>
 			{/if}
-
-			<div>
-				<div class="py-0.5 flex w-full justify-between">
-					<div class="self-center text-xs">{$i18n.t('Archived Chats')}</div>
-					<button
-						class="p-1 px-3 text-xs flex rounded-sm transition"
-						on:click={() => {
-							showArchivedChatsModal = true;
-						}}
-						type="button"
-					>
-						<span class="self-center">{$i18n.t('Manage')}</span>
-					</button>
-				</div>
-			</div>
 
 			<div>
 				<div class="py-0.5 flex w-full justify-between">
@@ -283,7 +231,7 @@
 		</div>
 
 		<div>
-			<div class="mb-1 text-sm font-medium">{$i18n.t('Files')}</div>
+			<div class="text-xs text-gray-400 dark:text-gray-600 mb-2">{$i18n.t('Files')}</div>
 
 			<div>
 				<div class="py-0.5 flex w-full justify-between">

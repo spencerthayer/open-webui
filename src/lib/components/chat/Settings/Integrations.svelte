@@ -80,13 +80,17 @@
 		updateHandler();
 	}}
 >
-	<div class="overflow-y-scroll scrollbar-hidden h-full">
+	<h2 class="text-sm font-medium text-gray-900 dark:text-white mb-4">{$i18n.t('Integrations')}</h2>
+
+	<div class="flex-1 min-h-0 overflow-y-auto scrollbar-hover pr-1.5">
 		{#if servers !== null}
 			<div>
 				<div class="pr-1.5">
 					<div class="">
 						<div class="flex justify-between items-center mb-0.5">
-							<div class="font-medium">{$i18n.t('Manage Tool Servers')}</div>
+							<div class="text-xs text-gray-400 dark:text-gray-600">
+								{$i18n.t('Manage Tool Servers')}
+							</div>
 
 							<Tooltip content={$i18n.t('Add Connection')}>
 								<button
@@ -169,9 +173,9 @@
 		{/if}
 	</div>
 
-	<div class="flex justify-end pt-3 text-sm font-medium">
+	<div class="shrink-0 flex justify-end pt-3 text-sm font-normal">
 		<button
-			class="px-3.5 py-1.5 text-sm font-medium bg-black hover:bg-gray-900 text-white dark:bg-white dark:text-black dark:hover:bg-gray-100 transition rounded-full"
+			class="px-3.5 py-1.5 text-sm font-normal bg-black hover:bg-gray-900 text-white dark:bg-white dark:text-black dark:hover:bg-gray-100 transition rounded-full"
 			type="submit"
 		>
 			{$i18n.t('Save')}

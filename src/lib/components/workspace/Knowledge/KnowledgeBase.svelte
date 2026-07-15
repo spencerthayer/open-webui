@@ -65,12 +65,13 @@
 	import ConfirmDialog from '../../common/ConfirmDialog.svelte';
 	import Drawer from '$lib/components/common/Drawer.svelte';
 	import ChevronLeft from '$lib/components/icons/ChevronLeft.svelte';
-	import LockClosed from '$lib/components/icons/LockClosed.svelte';
+	import AccessButton from '$lib/components/common/AccessButton.svelte';
 	import AccessControlModal from '../common/AccessControlModal.svelte';
 	import Search from '$lib/components/icons/Search.svelte';
 	import FilesOverlay from '$lib/components/chat/MessageInput/FilesOverlay.svelte';
 	import DropdownOptions from '$lib/components/common/DropdownOptions.svelte';
 	import Dropdown from '$lib/components/common/Dropdown.svelte';
+	import DropdownMenu from '$lib/components/common/DropdownMenu.svelte';
 	import Checkbox from '$lib/components/common/Checkbox.svelte';
 	import AdjustmentsHorizontal from '$lib/components/icons/AdjustmentsHorizontal.svelte';
 	import Pagination from '$lib/components/common/Pagination.svelte';
@@ -1263,19 +1264,11 @@
 
 						{#if knowledge?.write_access}
 							<div class="self-center shrink-0">
-								<button
-									class="bg-gray-50 hover:bg-gray-100 text-black dark:bg-gray-850 dark:hover:bg-gray-800 dark:text-white transition px-2 py-1 rounded-full flex gap-1 items-center"
-									type="button"
+								<AccessButton
 									on:click={() => {
 										showAccessControlModal = true;
 									}}
-								>
-									<LockClosed strokeWidth="2.5" className="size-3.5" />
-
-									<div class="text-sm font-medium shrink-0">
-										{$i18n.t('Access')}
-									</div>
-								</button>
+								/>
 							</div>
 						{:else}
 							<div class="text-xs shrink-0 text-gray-500">
@@ -1357,7 +1350,7 @@
 					</div>
 
 					<div class="flex flex-col gap-2">
-						<div class="font-medium text-sm">{$i18n.t('Test Query')}</div>
+						<div class="font-normal text-sm">{$i18n.t('Test Query')}</div>
 						<div class="flex gap-2">
 							<input
 								class="w-full text-sm rounded-xl bg-gray-50 dark:bg-gray-850 px-3 py-2 outline-hidden"
@@ -1375,7 +1368,7 @@
 
 					{#if externalTestResult}
 						<div class="rounded-xl bg-gray-50 dark:bg-gray-850 p-3 text-xs">
-							<div class="font-medium mb-2">{$i18n.t('Preview')}</div>
+							<div class="font-normal mb-2">{$i18n.t('Preview')}</div>
 							{#each externalTestResult.documents ?? [] as document, idx}
 								<div class="border-t border-gray-100 dark:border-gray-800 py-2">
 									<div class="line-clamp-4">{document}</div>
@@ -1409,18 +1402,16 @@
 
 						<Dropdown align="end">
 							<button
-								class="p-1.5 mr-1 rounded-xl text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition"
+								class="p-1.5 mr-1 rounded-xl text-gray-500 bg-transparent hover:text-gray-900 dark:hover:text-gray-100 transition"
 								type="button"
 							>
 								<AdjustmentsHorizontal className="size-3.5" strokeWidth="2" />
 							</button>
 
 							<div slot="content">
-								<div
-									class="min-w-[180px] rounded-2xl px-1 py-1 border border-gray-100 dark:border-gray-800 z-50 bg-white dark:bg-gray-850 dark:text-white shadow-lg"
-								>
+								<DropdownMenu className="min-w-[180px]">
 									<button
-										class="select-none flex gap-2 items-center px-3 py-1.5 text-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl w-full"
+										class="select-none flex h-[1.6875rem] w-full cursor-pointer items-center gap-2 rounded-xl bg-transparent px-2 text-[13px] hover:text-gray-900 dark:hover:text-gray-100"
 										type="button"
 										on:click={() => {
 											includeContent = !includeContent;
@@ -1434,7 +1425,7 @@
 										/>
 										{$i18n.t('File content')}
 									</button>
-								</div>
+								</DropdownMenu>
 							</div>
 						</Dropdown>
 
@@ -1483,8 +1474,8 @@
 							class="flex gap-3 w-fit text-center text-sm rounded-full bg-transparent px-0.5 whitespace-nowrap"
 						>
 							<DropdownOptions
-								align="start"
-								className="flex shrink-0 items-center gap-2 px-3 py-1.5 text-sm bg-gray-50 dark:bg-gray-850 rounded-xl placeholder-gray-400 outline-hidden focus:outline-hidden"
+								align="end"
+								className="flex h-8 shrink-0 items-center gap-1.5 rounded-xl bg-transparent px-1.5 text-[13px] font-normal text-gray-700 transition placeholder-gray-400 outline-hidden hover:text-gray-900 focus:outline-hidden dark:text-gray-200 dark:hover:text-gray-100"
 								bind:value={viewOption}
 								items={[
 									{ value: null, label: $i18n.t('All') },
@@ -1501,19 +1492,19 @@
 							/>
 
 							<DropdownOptions
-								align="start"
+								align="end"
 								bind:value={sortKey}
 								placeholder={$i18n.t('Sort')}
 								items={[
 									{ value: 'name', label: $i18n.t('Name') },
-									{ value: 'created_at', label: $i18n.t('Created At') },
-									{ value: 'updated_at', label: $i18n.t('Updated At') }
+									{ value: 'created_at', label: $i18n.t('Created') },
+									{ value: 'updated_at', label: $i18n.t('Updated') }
 								]}
 							/>
 
 							{#if sortKey}
 								<DropdownOptions
-									align="start"
+									align="end"
 									bind:value={direction}
 									items={[
 										{ value: 'asc', label: $i18n.t('Asc') },

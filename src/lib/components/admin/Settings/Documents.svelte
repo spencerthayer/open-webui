@@ -66,6 +66,8 @@
 	};
 
 	let RAGConfig = null;
+	const textareaClass =
+		'w-full rounded-lg border border-gray-100/50 bg-gray-50/40 px-2 py-1.5 text-xs text-gray-700 outline-hidden transition-colors placeholder:text-gray-300 focus:border-blue-400 dark:border-white/[0.04] dark:bg-white/[0.03] dark:text-gray-300 dark:placeholder:text-gray-700 dark:focus:border-blue-500';
 
 	const embeddingModelUpdateHandler = async () => {
 		if (RAG_EMBEDDING_ENGINE === '' && RAG_EMBEDDING_MODEL.split('/').length - 1 > 1) {
@@ -367,27 +369,25 @@
 />
 
 <form
-	class="flex flex-col h-full justify-between space-y-3 text-sm"
+	class="flex h-full flex-col justify-between text-sm"
 	on:submit|preventDefault={() => {
 		submitHandler();
 	}}
 >
+	<h2 class="text-sm font-medium text-gray-900 dark:text-white mb-4">{$i18n.t('Documents')}</h2>
+
 	{#if RAGConfig}
-		<div class=" space-y-2.5 overflow-y-scroll scrollbar-hidden h-full pr-1.5">
+		<div class="flex-1 min-h-0 overflow-y-auto scrollbar-hover pr-1.5">
 			<div class="">
-				<div class="mb-3">
-					<div class=" mt-0.5 mb-2.5 text-base font-medium">{$i18n.t('General')}</div>
-
-					<hr class=" border-gray-100/30 dark:border-gray-850/30 my-2" />
-
+				<div class="mb-5">
 					<div class="mb-2.5 flex flex-col w-full justify-between">
 						<div class="flex w-full justify-between mb-1">
-							<div class="self-center text-xs font-medium">
+							<div class="self-center text-xs text-gray-600 dark:text-gray-400">
 								{$i18n.t('Content Extraction Engine')}
 							</div>
 							<div class="">
 								<select
-									class="w-fit pr-8 rounded-sm px-2 text-xs bg-transparent outline-hidden text-right"
+									class="w-fit pr-8 rounded-lg px-2 text-xs bg-transparent outline-hidden text-right"
 									bind:value={RAGConfig.CONTENT_EXTRACTION_ENGINE}
 								>
 									<option value="">{$i18n.t('Default')}</option>
@@ -406,7 +406,7 @@
 						{#if RAGConfig.CONTENT_EXTRACTION_ENGINE === ''}
 							<div class="flex w-full mt-1">
 								<div class="flex-1 flex justify-between">
-									<div class=" self-center text-xs font-medium">
+									<div class=" self-center text-xs text-gray-600 dark:text-gray-400">
 										{$i18n.t('PDF Extract Images (OCR)')}
 									</div>
 									<div class="flex items-center relative">
@@ -417,7 +417,7 @@
 
 							<div class="flex w-full mt-2">
 								<div class="flex-1 flex justify-between">
-									<div class=" self-center text-xs font-medium">
+									<div class=" self-center text-xs text-gray-600 dark:text-gray-400">
 										<Tooltip
 											content={$i18n.t(
 												'Page mode creates one document per page. Single mode combines all pages into one document for better chunking across page boundaries.'
@@ -429,7 +429,7 @@
 									</div>
 									<div class="">
 										<select
-											class="w-fit pr-8 rounded-sm px-2 text-xs bg-transparent outline-hidden text-right"
+											class="w-fit pr-8 rounded-lg px-2 text-xs bg-transparent outline-hidden text-right"
 											bind:value={RAGConfig.PDF_LOADER_MODE}
 										>
 											<option value="page">{$i18n.t('Page')}</option>
@@ -448,7 +448,7 @@
 									className="w-full"
 								>
 									<input
-										class="flex-1 w-full text-sm bg-transparent outline-hidden"
+										class="flex-1 w-full text-xs bg-transparent outline-hidden"
 										placeholder={$i18n.t('Enter Datalab Marker API Base URL')}
 										bind:value={RAGConfig.DATALAB_MARKER_API_BASE_URL}
 									/>
@@ -464,7 +464,7 @@
 
 							<div class="flex flex-col gap-2 mt-2">
 								<div class=" flex flex-col w-full justify-between">
-									<div class=" mb-1 text-xs font-medium">
+									<div class=" mb-1 text-xs text-gray-600 dark:text-gray-400">
 										{$i18n.t('Additional Config')}
 									</div>
 									<div class="flex w-full items-center relative">
@@ -476,6 +476,7 @@
 											className="w-full"
 										>
 											<Textarea
+												className={textareaClass}
 												bind:value={RAGConfig.DATALAB_MARKER_ADDITIONAL_CONFIG}
 												placeholder={$i18n.t('Enter JSON config (e.g., {"disable_links": true})')}
 											/>
@@ -485,7 +486,7 @@
 							</div>
 
 							<div class="flex justify-between w-full mt-2">
-								<div class="self-center text-xs font-medium">
+								<div class="self-center text-xs text-gray-600 dark:text-gray-400">
 									<Tooltip
 										content={$i18n.t(
 											'Significantly improves accuracy by using an LLM to enhance tables, forms, inline math, and layout detection. Will increase latency. Defaults to False.'
@@ -500,7 +501,7 @@
 								</div>
 							</div>
 							<div class="flex justify-between w-full mt-2">
-								<div class="self-center text-xs font-medium">
+								<div class="self-center text-xs text-gray-600 dark:text-gray-400">
 									<Tooltip
 										content={$i18n.t('Skip the cache and re-run the inference. Defaults to False.')}
 										placement="top-start"
@@ -513,7 +514,7 @@
 								</div>
 							</div>
 							<div class="flex justify-between w-full mt-2">
-								<div class="self-center text-xs font-medium">
+								<div class="self-center text-xs text-gray-600 dark:text-gray-400">
 									<Tooltip
 										content={$i18n.t(
 											'Force OCR on all pages of the PDF. This can lead to worse results if you have good text in your PDFs. Defaults to False.'
@@ -528,7 +529,7 @@
 								</div>
 							</div>
 							<div class="flex justify-between w-full mt-2">
-								<div class="self-center text-xs font-medium">
+								<div class="self-center text-xs text-gray-600 dark:text-gray-400">
 									<Tooltip
 										content={$i18n.t(
 											'Whether to paginate the output. Each page will be separated by a horizontal rule and page number. Defaults to False.'
@@ -543,7 +544,7 @@
 								</div>
 							</div>
 							<div class="flex justify-between w-full mt-2">
-								<div class="self-center text-xs font-medium">
+								<div class="self-center text-xs text-gray-600 dark:text-gray-400">
 									<Tooltip
 										content={$i18n.t(
 											'Strip existing OCR text from the PDF and re-run OCR. Ignored if Force OCR is enabled. Defaults to False.'
@@ -558,7 +559,7 @@
 								</div>
 							</div>
 							<div class="flex justify-between w-full mt-2">
-								<div class="self-center text-xs font-medium">
+								<div class="self-center text-xs text-gray-600 dark:text-gray-400">
 									<Tooltip
 										content={$i18n.t(
 											'Disable image extraction from the PDF. If Use LLM is enabled, images will be automatically captioned. Defaults to False.'
@@ -573,7 +574,7 @@
 								</div>
 							</div>
 							<div class="flex justify-between w-full mt-2">
-								<div class="self-center text-xs font-medium">
+								<div class="self-center text-xs text-gray-600 dark:text-gray-400">
 									<Tooltip
 										content={$i18n.t(
 											'Format the lines in the output. Defaults to False. If set to True, the lines will be formatted to detect inline math and styles.'
@@ -588,7 +589,7 @@
 								</div>
 							</div>
 							<div class="flex justify-between w-full mt-2">
-								<div class="self-center text-xs font-medium">
+								<div class="self-center text-xs text-gray-600 dark:text-gray-400">
 									<Tooltip
 										content={$i18n.t(
 											"The output format for the text. Can be 'json', 'markdown', or 'html'. Defaults to 'markdown'."
@@ -600,7 +601,7 @@
 								</div>
 								<div class="">
 									<select
-										class="w-fit pr-8 rounded-sm px-2 text-xs bg-transparent outline-hidden text-right"
+										class="w-fit pr-8 rounded-lg px-2 text-xs bg-transparent outline-hidden text-right"
 										bind:value={RAGConfig.DATALAB_MARKER_OUTPUT_FORMAT}
 									>
 										<option value="markdown">{$i18n.t('Markdown')}</option>
@@ -613,7 +614,7 @@
 							<div class="my-0.5 flex flex-col gap-2 pr-2">
 								<div class="flex gap-2">
 									<input
-										class="flex-1 w-full text-sm bg-transparent outline-hidden"
+										class="flex-1 w-full text-xs bg-transparent outline-hidden"
 										placeholder={$i18n.t('Enter External Document Loader URL')}
 										bind:value={RAGConfig.EXTERNAL_DOCUMENT_LOADER_URL}
 									/>
@@ -631,7 +632,7 @@
 										)}
 									>
 										<Textarea
-											className="w-full text-sm outline-hidden"
+											className={textareaClass}
 											bind:value={RAGConfig.EXTERNAL_DOCUMENT_LOADER_HEADERS}
 											placeholder={$i18n.t('Enter additional headers in JSON format')}
 											required={false}
@@ -687,7 +688,7 @@
 							<div class="flex w-full mt-1">
 								<div class="flex-1 mr-2">
 									<input
-										class="flex-1 w-full text-sm bg-transparent outline-hidden"
+										class="flex-1 w-full text-xs bg-transparent outline-hidden"
 										placeholder={$i18n.t('Enter Tika Server URL')}
 										bind:value={RAGConfig.TIKA_SERVER_URL}
 									/>
@@ -696,7 +697,7 @@
 						{:else if RAGConfig.CONTENT_EXTRACTION_ENGINE === 'docling'}
 							<div class="my-0.5 flex gap-2 pr-2">
 								<input
-									class="flex-1 w-full text-sm bg-transparent outline-hidden"
+									class="flex-1 w-full text-xs bg-transparent outline-hidden"
 									placeholder={$i18n.t('Enter Docling Server URL')}
 									bind:value={RAGConfig.DOCLING_SERVER_URL}
 								/>
@@ -709,11 +710,12 @@
 
 							<div class="flex flex-col gap-2 mt-2">
 								<div class=" flex flex-col w-full justify-between">
-									<div class=" mb-1 text-xs font-medium">
+									<div class=" mb-1 text-xs text-gray-600 dark:text-gray-400">
 										{$i18n.t('Parameters')}
 									</div>
 									<div class="flex w-full items-center relative">
 										<Textarea
+											className={textareaClass}
 											bind:value={RAGConfig.DOCLING_PARAMS}
 											placeholder={$i18n.t('Enter additional parameters in JSON format')}
 											minSize={100}
@@ -724,7 +726,7 @@
 						{:else if RAGConfig.CONTENT_EXTRACTION_ENGINE === 'document_intelligence'}
 							<div class="my-0.5 flex gap-2 pr-2">
 								<input
-									class="flex-1 w-full text-sm bg-transparent outline-hidden"
+									class="flex-1 w-full text-xs bg-transparent outline-hidden"
 									placeholder={$i18n.t('Enter Document Intelligence Endpoint')}
 									bind:value={RAGConfig.DOCUMENT_INTELLIGENCE_ENDPOINT}
 								/>
@@ -735,13 +737,13 @@
 								/>
 							</div>
 							<div class="my-0.5 flex flex-col w-full">
-								<div class=" mb-1 text-xs font-medium">
+								<div class=" mb-1 text-xs text-gray-600 dark:text-gray-400">
 									{$i18n.t('Document Intelligence Model')}
 								</div>
 								<div class="flex w-full">
 									<div class="flex-1 mr-2">
 										<input
-											class="flex-1 w-full text-sm bg-transparent outline-hidden"
+											class="flex-1 w-full text-xs bg-transparent outline-hidden"
 											placeholder={$i18n.t('Enter Document Intelligence Model')}
 											bind:value={RAGConfig.DOCUMENT_INTELLIGENCE_MODEL}
 										/>
@@ -751,7 +753,7 @@
 						{:else if RAGConfig.CONTENT_EXTRACTION_ENGINE === 'mistral_ocr'}
 							<div class="my-0.5 flex gap-2 pr-2">
 								<input
-									class="flex-1 w-full text-sm bg-transparent outline-hidden"
+									class="flex-1 w-full text-xs bg-transparent outline-hidden"
 									placeholder={$i18n.t('Enter Mistral API Base URL')}
 									bind:value={RAGConfig.MISTRAL_OCR_API_BASE_URL}
 								/>
@@ -761,7 +763,7 @@
 								/>
 							</div>
 							<div class="flex justify-between w-full mt-2 pr-2">
-								<div class="self-center text-xs font-medium">
+								<div class="self-center text-xs text-gray-600 dark:text-gray-400">
 									<Tooltip
 										content={$i18n.t(
 											'Send the PDF as a base64 data URL instead of uploading it first.'
@@ -778,7 +780,7 @@
 						{:else if RAGConfig.CONTENT_EXTRACTION_ENGINE === 'paddleocr_vl'}
 							<div class="my-0.5 flex gap-2 pr-2">
 								<input
-									class="flex-1 w-full text-sm bg-transparent outline-hidden"
+									class="flex-1 w-full text-xs bg-transparent outline-hidden"
 									placeholder={$i18n.t('Enter PaddleOCR-vl API Base URL')}
 									bind:value={RAGConfig.PADDLEOCR_VL_BASE_URL}
 								/>
@@ -792,11 +794,11 @@
 							<!-- API Mode Selection -->
 							<div class="flex w-full mt-2">
 								<div class="flex-1 flex justify-between">
-									<div class="self-center text-xs font-medium">
+									<div class="self-center text-xs text-gray-600 dark:text-gray-400">
 										{$i18n.t('API Mode')}
 									</div>
 									<select
-										class="w-fit pr-8 rounded-sm px-2 text-xs bg-transparent outline-hidden"
+										class="w-fit pr-8 rounded-lg px-2 text-xs bg-transparent outline-hidden"
 										bind:value={RAGConfig.MINERU_API_MODE}
 										on:change={() => {
 											// Auto-update URL when switching modes if it's empty or matches the opposite mode's default
@@ -823,7 +825,7 @@
 							<!-- API URL -->
 							<div class="flex w-full mt-2">
 								<input
-									class="flex-1 w-full text-sm bg-transparent outline-hidden"
+									class="flex-1 w-full text-xs bg-transparent outline-hidden"
 									placeholder={RAGConfig.MINERU_API_MODE === 'cloud'
 										? $i18n.t('https://mineru.net/api/v4')
 										: $i18n.t('http://localhost:8000')}
@@ -840,11 +842,11 @@
 
 							<div class="flex w-full mt-2">
 								<div class="flex-1 flex justify-between">
-									<div class="self-center text-xs font-medium">
+									<div class="self-center text-xs text-gray-600 dark:text-gray-400">
 										{$i18n.t('API Timeout')}
 									</div>
 									<input
-										class="w-16 text-sm bg-transparent outline-hidden text-right"
+										class="w-16 text-xs bg-transparent outline-hidden text-right"
 										type="number"
 										min="1"
 										bind:value={RAGConfig.MINERU_API_TIMEOUT}
@@ -855,7 +857,7 @@
 
 							<!-- Parameters -->
 							<div class="flex flex-col justify-between w-full mt-2">
-								<div class="text-xs font-medium">
+								<div class="text-xs text-gray-600 dark:text-gray-400">
 									<Tooltip
 										content={$i18n.t(
 											'Advanced parameters for MinerU parsing (enable_ocr, enable_formula, enable_table, language, model_version, page_ranges)'
@@ -867,6 +869,7 @@
 								</div>
 								<div class="mt-1.5">
 									<Textarea
+										className={textareaClass}
 										bind:value={RAGConfig.MINERU_PARAMS}
 										placeholder={`{\n  "enable_ocr": false,\n  "enable_formula": true,\n  "enable_table": true,\n  "language": "en",\n  "model_version": "pipeline",\n  "page_ranges": ""\n}`}
 										minSize={100}
@@ -876,7 +879,7 @@
 
 							<!-- File Extensions -->
 							<div class="flex flex-col justify-between w-full mt-2">
-								<div class="text-xs font-medium mb-1">
+								<div class="text-xs text-gray-600 dark:text-gray-400 mb-1">
 									<Tooltip
 										content={$i18n.t(
 											'Comma-separated list of file extensions MinerU will handle (e.g. pdf, docx, pptx, xlsx)'
@@ -887,7 +890,7 @@
 									</Tooltip>
 								</div>
 								<input
-									class="flex-1 w-full text-sm bg-transparent outline-hidden"
+									class="flex-1 w-full text-xs bg-transparent outline-hidden"
 									placeholder={$i18n.t('pdf, docx, pptx, xlsx')}
 									bind:value={RAGConfig.MINERU_FILE_EXTENSIONS}
 								/>
@@ -896,7 +899,7 @@
 					</div>
 
 					<div class="  mb-2.5 flex w-full justify-between">
-						<div class=" self-center text-xs font-medium">
+						<div class=" self-center text-xs text-gray-600 dark:text-gray-400">
 							<Tooltip content={$i18n.t('Full Context Mode')} placement="top-start">
 								{$i18n.t('Bypass Embedding and Retrieval')}
 							</Tooltip>
@@ -918,10 +921,12 @@
 
 					{#if !RAGConfig.BYPASS_EMBEDDING_AND_RETRIEVAL}
 						<div class="  mb-2.5 flex w-full justify-between">
-							<div class=" self-center text-xs font-medium">{$i18n.t('Text Splitter')}</div>
+							<div class=" self-center text-xs text-gray-600 dark:text-gray-400">
+								{$i18n.t('Text Splitter')}
+							</div>
 							<div class="flex items-center relative">
 								<select
-									class="w-fit pr-8 rounded-sm px-2 text-xs bg-transparent outline-hidden text-right"
+									class="w-fit pr-8 rounded-lg px-2 text-xs bg-transparent outline-hidden text-right"
 									bind:value={RAGConfig.TEXT_SPLITTER}
 								>
 									<option value="">{$i18n.t('Default')} ({$i18n.t('Character')})</option>
@@ -935,12 +940,14 @@
 
 						{#if RAGConfig.TEXT_SPLITTER === 'token_transformers'}
 							<div class="mb-2.5 flex flex-col w-full justify-between">
-								<div class="self-center text-xs font-medium min-w-fit mb-1 w-full">
+								<div
+									class="self-center text-xs text-gray-600 dark:text-gray-400 min-w-fit mb-1 w-full"
+								>
 									{$i18n.t('Tokenizer Model')}
 								</div>
 								<div class="self-center w-full">
 									<input
-										class="w-full rounded-lg py-1.5 px-4 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-hidden"
+										class="w-full rounded-lg border border-gray-100/50 bg-gray-50/40 px-2 py-1.5 text-xs text-gray-700 outline-hidden transition-colors focus:border-blue-400 dark:border-white/[0.04] dark:bg-white/[0.03] dark:text-gray-300 dark:focus:border-blue-500"
 										placeholder={$i18n.t('Enter Tokenizer Model')}
 										bind:value={RAGConfig.RAG_TOKENIZER_MODEL}
 										autocomplete="off"
@@ -951,7 +958,7 @@
 						{/if}
 
 						<div class="  mb-2.5 flex w-full justify-between">
-							<div class=" self-center text-xs font-medium">
+							<div class=" self-center text-xs text-gray-600 dark:text-gray-400">
 								<Tooltip
 									placement="top-start"
 									content={$i18n.t(
@@ -969,12 +976,12 @@
 						<div class="  mb-2.5 flex w-full justify-between">
 							<div class=" flex gap-1.5 w-full">
 								<div class="  w-full justify-between">
-									<div class="self-center text-xs font-medium min-w-fit mb-1">
+									<div class="self-center text-xs text-gray-600 dark:text-gray-400 min-w-fit mb-1">
 										{$i18n.t('Chunk Size')}
 									</div>
 									<div class="self-center">
 										<input
-											class=" w-full rounded-lg py-1.5 px-4 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-hidden"
+											class=" w-full rounded-lg border border-gray-100/50 bg-gray-50/40 px-2 py-1.5 text-xs text-gray-700 outline-hidden transition-colors focus:border-blue-400 dark:border-white/[0.04] dark:bg-white/[0.03] dark:text-gray-300 dark:focus:border-blue-500"
 											type="number"
 											placeholder={$i18n.t('Enter Chunk Size')}
 											bind:value={RAGConfig.CHUNK_SIZE}
@@ -985,13 +992,13 @@
 								</div>
 
 								<div class="w-full">
-									<div class=" self-center text-xs font-medium min-w-fit mb-1">
+									<div class=" self-center text-xs text-gray-600 dark:text-gray-400 min-w-fit mb-1">
 										{$i18n.t('Chunk Overlap')}
 									</div>
 
 									<div class="self-center">
 										<input
-											class="w-full rounded-lg py-1.5 px-4 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-hidden"
+											class="w-full rounded-lg border border-gray-100/50 bg-gray-50/40 px-2 py-1.5 text-xs text-gray-700 outline-hidden transition-colors focus:border-blue-400 dark:border-white/[0.04] dark:bg-white/[0.03] dark:text-gray-300 dark:focus:border-blue-500"
 											type="number"
 											placeholder={$i18n.t('Enter Chunk Overlap')}
 											bind:value={RAGConfig.CHUNK_OVERLAP}
@@ -1007,7 +1014,9 @@
 							<div class="  mb-2.5 flex w-full justify-between">
 								<div class=" flex gap-1.5 w-full">
 									<div class="w-full">
-										<div class="self-center text-xs font-medium min-w-fit mb-1">
+										<div
+											class="self-center text-xs text-gray-600 dark:text-gray-400 min-w-fit mb-1"
+										>
 											<Tooltip
 												placement="top-start"
 												content={$i18n.t(
@@ -1019,7 +1028,7 @@
 										</div>
 										<div class="self-center">
 											<input
-												class="w-full rounded-lg py-1.5 px-4 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-hidden"
+												class="w-full rounded-lg border border-gray-100/50 bg-gray-50/40 px-2 py-1.5 text-xs text-gray-700 outline-hidden transition-colors focus:border-blue-400 dark:border-white/[0.04] dark:bg-white/[0.03] dark:text-gray-300 dark:focus:border-blue-500"
 												type="number"
 												placeholder={$i18n.t('Enter Chunk Min Size Target')}
 												bind:value={RAGConfig.CHUNK_MIN_SIZE_TARGET}
@@ -1035,19 +1044,19 @@
 				</div>
 
 				{#if !RAGConfig.BYPASS_EMBEDDING_AND_RETRIEVAL}
-					<div class="mb-3">
-						<div class=" mt-0.5 mb-2.5 text-base font-medium">{$i18n.t('Embedding')}</div>
-
-						<hr class=" border-gray-100/30 dark:border-gray-850/30 my-2" />
+					<div class="mb-5">
+						<div class=" mb-2 text-xs text-gray-400 dark:text-gray-600">
+							{$i18n.t('Embedding')}
+						</div>
 
 						<div class="  mb-2.5 flex flex-col w-full justify-between">
 							<div class="flex w-full justify-between">
-								<div class=" self-center text-xs font-medium">
+								<div class=" self-center text-xs text-gray-600 dark:text-gray-400">
 									{$i18n.t('Embedding Model Engine')}
 								</div>
 								<div class="flex items-center relative">
 									<select
-										class="w-fit pr-8 rounded-sm px-2 p-1 text-xs bg-transparent outline-hidden text-right"
+										class="w-fit pr-8 rounded-lg px-2 p-1 text-xs bg-transparent outline-hidden text-right"
 										bind:value={RAG_EMBEDDING_ENGINE}
 										placeholder={$i18n.t('Select an embedding model engine')}
 										on:change={(e) => {
@@ -1073,7 +1082,7 @@
 							{#if RAG_EMBEDDING_ENGINE === 'openai'}
 								<div class="my-0.5 flex gap-2 pr-2">
 									<input
-										class="flex-1 w-full text-sm bg-transparent outline-hidden"
+										class="flex-1 w-full text-xs bg-transparent outline-hidden"
 										placeholder={$i18n.t('API Base URL')}
 										bind:value={OpenAIUrl}
 										required
@@ -1088,7 +1097,7 @@
 							{:else if RAG_EMBEDDING_ENGINE === 'ollama'}
 								<div class="my-0.5 flex gap-2 pr-2">
 									<input
-										class="flex-1 w-full text-sm bg-transparent outline-hidden"
+										class="flex-1 w-full text-xs bg-transparent outline-hidden"
 										placeholder={$i18n.t('API Base URL')}
 										bind:value={OllamaUrl}
 										required
@@ -1104,7 +1113,7 @@
 								<div class="my-0.5 flex flex-col gap-2 pr-2 w-full">
 									<div class="flex gap-2">
 										<input
-											class="flex-1 w-full text-sm bg-transparent outline-hidden"
+											class="flex-1 w-full text-xs bg-transparent outline-hidden"
 											placeholder={$i18n.t('API Base URL')}
 											bind:value={AzureOpenAIUrl}
 											required
@@ -1113,7 +1122,7 @@
 									</div>
 									<div class="flex gap-2">
 										<input
-											class="flex-1 w-full text-sm bg-transparent outline-hidden"
+											class="flex-1 w-full text-xs bg-transparent outline-hidden"
 											placeholder={$i18n.t('Version')}
 											bind:value={AzureOpenAIVersion}
 											required
@@ -1124,14 +1133,16 @@
 						</div>
 
 						<div class="  mb-2.5 flex flex-col w-full">
-							<div class=" mb-1 text-xs font-medium">{$i18n.t('Embedding Model')}</div>
+							<div class=" mb-1 text-xs text-gray-600 dark:text-gray-400">
+								{$i18n.t('Embedding Model')}
+							</div>
 
 							<div class="">
 								{#if RAG_EMBEDDING_ENGINE === 'ollama'}
 									<div class="flex w-full">
 										<div class="flex-1 mr-2">
 											<input
-												class="flex-1 w-full text-sm bg-transparent outline-hidden"
+												class="flex-1 w-full text-xs bg-transparent outline-hidden"
 												bind:value={RAG_EMBEDDING_MODEL}
 												placeholder={$i18n.t('Set embedding model')}
 												required
@@ -1142,7 +1153,7 @@
 									<div class="flex w-full">
 										<div class="flex-1 mr-2">
 											<input
-												class="flex-1 w-full text-sm bg-transparent outline-hidden"
+												class="flex-1 w-full text-xs bg-transparent outline-hidden"
 												placeholder={$i18n.t('Set embedding model (e.g. {{model}})', {
 													model: RAG_EMBEDDING_MODEL.slice(-40)
 												})}
@@ -1191,7 +1202,7 @@
 						</div>
 
 						<div class="  mb-2.5 flex w-full justify-between">
-							<div class=" self-center text-xs font-medium">
+							<div class=" self-center text-xs text-gray-600 dark:text-gray-400">
 								{$i18n.t('Embedding Batch Size')}
 							</div>
 
@@ -1209,7 +1220,7 @@
 
 						{#if RAG_EMBEDDING_ENGINE === 'ollama' || RAG_EMBEDDING_ENGINE === 'openai' || RAG_EMBEDDING_ENGINE === 'azure_openai'}
 							<div class="  mb-2.5 flex w-full justify-between">
-								<div class="self-center text-xs font-medium">
+								<div class="self-center text-xs text-gray-600 dark:text-gray-400">
 									<Tooltip
 										content={$i18n.t(
 											'Runs embedding tasks concurrently to speed up processing. Turn off if rate limits become an issue.'
@@ -1225,7 +1236,7 @@
 							</div>
 
 							<div class="  mb-2.5 flex w-full justify-between">
-								<div class="self-center text-xs font-medium">
+								<div class="self-center text-xs text-gray-600 dark:text-gray-400">
 									<Tooltip
 										content={$i18n.t(
 											'Limits the number of concurrent embedding requests. Set to 0 for unlimited.'
@@ -1249,14 +1260,16 @@
 					</div>
 				{/if}
 
-				<div class="mb-3">
-					<div class=" mt-0.5 mb-2.5 text-base font-medium">{$i18n.t('Retrieval')}</div>
-
-					<hr class=" border-gray-100/30 dark:border-gray-850/30 my-2" />
+				<div class="mb-5">
+					<div class=" mb-2 text-xs text-gray-400 dark:text-gray-600">
+						{$i18n.t('Retrieval')}
+					</div>
 
 					{#if !RAGConfig.BYPASS_EMBEDDING_AND_RETRIEVAL}
 						<div class="  mb-2.5 flex w-full justify-between">
-							<div class=" self-center text-xs font-medium">{$i18n.t('Full Context Mode')}</div>
+							<div class=" self-center text-xs text-gray-600 dark:text-gray-400">
+								{$i18n.t('Full Context Mode')}
+							</div>
 							<div class="flex items-center relative">
 								<Tooltip
 									content={RAGConfig.RAG_FULL_CONTEXT
@@ -1274,7 +1287,9 @@
 
 						{#if !RAGConfig.RAG_FULL_CONTEXT}
 							<div class="  mb-2.5 flex w-full justify-between">
-								<div class=" self-center text-xs font-medium">{$i18n.t('Hybrid Search')}</div>
+								<div class=" self-center text-xs text-gray-600 dark:text-gray-400">
+									{$i18n.t('Hybrid Search')}
+								</div>
 								<div class="flex items-center relative">
 									<Switch bind:state={RAGConfig.ENABLE_RAG_HYBRID_SEARCH} />
 								</div>
@@ -1282,7 +1297,7 @@
 
 							{#if RAGConfig.ENABLE_RAG_HYBRID_SEARCH === true}
 								<div class="mb-2.5 flex w-full justify-between">
-									<div class="self-center text-xs font-medium">
+									<div class="self-center text-xs text-gray-600 dark:text-gray-400">
 										{$i18n.t('Enrich Hybrid Search Text')}
 									</div>
 									<div class="flex items-center relative">
@@ -1298,12 +1313,12 @@
 
 								<div class="  mb-2.5 flex flex-col w-full justify-between">
 									<div class="flex w-full justify-between">
-										<div class=" self-center text-xs font-medium">
+										<div class=" self-center text-xs text-gray-600 dark:text-gray-400">
 											{$i18n.t('Reranking Engine')}
 										</div>
 										<div class="flex items-center relative">
 											<select
-												class="w-fit pr-8 rounded-sm px-2 p-1 text-xs bg-transparent outline-hidden text-right"
+												class="w-fit pr-8 rounded-lg px-2 p-1 text-xs bg-transparent outline-hidden text-right"
 												bind:value={RAGConfig.RAG_RERANKING_ENGINE}
 												placeholder={$i18n.t('Select a reranking model engine')}
 												on:change={(e) => {
@@ -1323,7 +1338,7 @@
 									{#if RAGConfig.RAG_RERANKING_ENGINE === 'external'}
 										<div class="my-0.5 flex gap-2 pr-2">
 											<input
-												class="flex-1 w-full text-sm bg-transparent outline-hidden"
+												class="flex-1 w-full text-xs bg-transparent outline-hidden"
 												placeholder={$i18n.t('API Base URL')}
 												bind:value={RAGConfig.RAG_EXTERNAL_RERANKER_URL}
 												required
@@ -1339,13 +1354,15 @@
 								</div>
 
 								<div class="  mb-2.5 flex flex-col w-full">
-									<div class=" mb-1 text-xs font-medium">{$i18n.t('Reranking Model')}</div>
+									<div class=" mb-1 text-xs text-gray-600 dark:text-gray-400">
+										{$i18n.t('Reranking Model')}
+									</div>
 
 									<div class="">
 										<div class="flex w-full">
 											<div class="flex-1 mr-2">
 												<input
-													class="flex-1 w-full text-sm bg-transparent outline-hidden"
+													class="flex-1 w-full text-xs bg-transparent outline-hidden"
 													placeholder={$i18n.t('Set reranking model (e.g. {{model}})', {
 														model: 'BAAI/bge-reranker-v2-m3'
 													})}
@@ -1358,7 +1375,7 @@
 							{/if}
 
 							<div class="  mb-2.5 flex w-full justify-between">
-								<div class=" self-center text-xs font-medium">
+								<div class=" self-center text-xs text-gray-600 dark:text-gray-400">
 									{$i18n.t('Reranking Batch Size')}
 								</div>
 
@@ -1375,10 +1392,12 @@
 							</div>
 
 							<div class="  mb-2.5 flex w-full justify-between">
-								<div class=" self-center text-xs font-medium">{$i18n.t('Top K')}</div>
+								<div class=" self-center text-xs text-gray-600 dark:text-gray-400">
+									{$i18n.t('Top K')}
+								</div>
 								<div class="flex items-center relative">
 									<input
-										class="flex-1 w-full text-sm bg-transparent outline-hidden"
+										class="flex-1 w-full text-xs bg-transparent outline-hidden"
 										type="number"
 										placeholder={$i18n.t('Enter Top K')}
 										bind:value={RAGConfig.TOP_K}
@@ -1390,10 +1409,12 @@
 
 							{#if RAGConfig.ENABLE_RAG_HYBRID_SEARCH === true}
 								<div class="mb-2.5 flex w-full justify-between">
-									<div class="self-center text-xs font-medium">{$i18n.t('Top K Reranker')}</div>
+									<div class="self-center text-xs text-gray-600 dark:text-gray-400">
+										{$i18n.t('Top K Reranker')}
+									</div>
 									<div class="flex items-center relative">
 										<input
-											class="flex-1 w-full text-sm bg-transparent outline-hidden"
+											class="flex-1 w-full text-xs bg-transparent outline-hidden"
 											type="number"
 											placeholder={$i18n.t('Enter Top K Reranker')}
 											bind:value={RAGConfig.TOP_K_RERANKER}
@@ -1407,12 +1428,12 @@
 							{#if RAGConfig.ENABLE_RAG_HYBRID_SEARCH === true}
 								<div class="  mb-2.5 flex flex-col w-full justify-between">
 									<div class=" flex w-full justify-between">
-										<div class=" self-center text-xs font-medium">
+										<div class=" self-center text-xs text-gray-600 dark:text-gray-400">
 											{$i18n.t('Relevance Threshold')}
 										</div>
 										<div class="flex items-center relative">
 											<input
-												class="flex-1 w-full text-sm bg-transparent outline-hidden"
+												class="flex-1 w-full text-xs bg-transparent outline-hidden"
 												type="number"
 												step="0.01"
 												placeholder={$i18n.t('Enter Score')}
@@ -1443,11 +1464,11 @@
 										className="inline-tooltip"
 									>
 										<div class="flex w-full justify-between">
-											<div class=" self-center text-xs font-medium">
+											<div class=" self-center text-xs text-gray-600 dark:text-gray-400">
 												{$i18n.t('BM25 Weight')}
 											</div>
 											<button
-												class="p-1 px-3 text-xs flex rounded-sm transition shrink-0 outline-hidden"
+												class="p-1 px-3 text-xs flex rounded-lg transition shrink-0 outline-hidden"
 												type="button"
 												on:click={() => {
 													RAGConfig.HYBRID_BM25_WEIGHT =
@@ -1505,7 +1526,9 @@
 					{/if}
 
 					<div class="  mb-2.5 flex flex-col w-full justify-between">
-						<div class=" mb-1 text-xs font-medium">{$i18n.t('RAG Template')}</div>
+						<div class=" mb-1 text-xs text-gray-600 dark:text-gray-400">
+							{$i18n.t('RAG Template')}
+						</div>
 						<div class="flex w-full items-center relative">
 							<Tooltip
 								content={$i18n.t('Leave empty to use the default prompt, or enter a custom prompt')}
@@ -1513,6 +1536,7 @@
 								className="w-full"
 							>
 								<Textarea
+									className={textareaClass}
 									bind:value={RAGConfig.RAG_TEMPLATE}
 									placeholder={$i18n.t(
 										'Leave empty to use the default prompt, or enter a custom prompt'
@@ -1531,13 +1555,15 @@
 					</div>
 				</div>
 
-				<div class="mb-3">
-					<div class=" mt-0.5 mb-2.5 text-base font-medium">{$i18n.t('Files')}</div>
-
-					<hr class=" border-gray-100/30 dark:border-gray-850/30 my-2" />
+				<div class="mb-5">
+					<div class=" mb-2 text-xs text-gray-400 dark:text-gray-600">
+						{$i18n.t('Files')}
+					</div>
 
 					<div class="  mb-2.5 flex w-full justify-between">
-						<div class=" self-center text-xs font-medium">{$i18n.t('Allowed File Extensions')}</div>
+						<div class=" self-center text-xs text-gray-600 dark:text-gray-400">
+							{$i18n.t('Allowed File Extensions')}
+						</div>
 						<div class="flex items-center relative">
 							<Tooltip
 								content={$i18n.t(
@@ -1546,7 +1572,7 @@
 								placement="top-start"
 							>
 								<input
-									class="flex-1 w-full text-sm bg-transparent outline-hidden"
+									class="flex-1 w-full text-xs bg-transparent outline-hidden"
 									type="text"
 									placeholder={$i18n.t('e.g. pdf, docx, txt')}
 									bind:value={RAGConfig.ALLOWED_FILE_EXTENSIONS}
@@ -1557,7 +1583,9 @@
 					</div>
 
 					<div class="  mb-2.5 flex w-full justify-between">
-						<div class=" self-center text-xs font-medium">{$i18n.t('Max Upload Size')}</div>
+						<div class=" self-center text-xs text-gray-600 dark:text-gray-400">
+							{$i18n.t('Max Upload Size')}
+						</div>
 						<div class="flex items-center relative">
 							<Tooltip
 								content={$i18n.t(
@@ -1566,7 +1594,7 @@
 								placement="top-start"
 							>
 								<input
-									class="flex-1 w-full text-sm bg-transparent outline-hidden"
+									class="flex-1 w-full text-xs bg-transparent outline-hidden"
 									type="number"
 									placeholder={$i18n.t('Leave empty for unlimited')}
 									bind:value={RAGConfig.FILE_MAX_SIZE}
@@ -1578,7 +1606,9 @@
 					</div>
 
 					<div class="  mb-2.5 flex w-full justify-between">
-						<div class=" self-center text-xs font-medium">{$i18n.t('Max Upload Count')}</div>
+						<div class=" self-center text-xs text-gray-600 dark:text-gray-400">
+							{$i18n.t('Max Upload Count')}
+						</div>
 						<div class="flex items-center relative">
 							<Tooltip
 								content={$i18n.t(
@@ -1587,7 +1617,7 @@
 								placement="top-start"
 							>
 								<input
-									class="flex-1 w-full text-sm bg-transparent outline-hidden"
+									class="flex-1 w-full text-xs bg-transparent outline-hidden"
 									type="number"
 									placeholder={$i18n.t('Leave empty for unlimited')}
 									bind:value={RAGConfig.FILE_MAX_COUNT}
@@ -1599,7 +1629,9 @@
 					</div>
 
 					<div class="  mb-2.5 flex w-full justify-between">
-						<div class=" self-center text-xs font-medium">{$i18n.t('Image Compression Width')}</div>
+						<div class=" self-center text-xs text-gray-600 dark:text-gray-400">
+							{$i18n.t('Image Compression Width')}
+						</div>
 						<div class="flex items-center relative">
 							<Tooltip
 								content={$i18n.t(
@@ -1608,7 +1640,7 @@
 								placement="top-start"
 							>
 								<input
-									class="flex-1 w-full text-sm bg-transparent outline-hidden"
+									class="flex-1 w-full text-xs bg-transparent outline-hidden"
 									type="number"
 									placeholder={$i18n.t('Leave empty for no compression')}
 									bind:value={RAGConfig.FILE_IMAGE_COMPRESSION_WIDTH}
@@ -1620,7 +1652,7 @@
 					</div>
 
 					<div class="  mb-2.5 flex w-full justify-between">
-						<div class=" self-center text-xs font-medium">
+						<div class=" self-center text-xs text-gray-600 dark:text-gray-400">
 							{$i18n.t('Image Compression Height')}
 						</div>
 						<div class="flex items-center relative">
@@ -1631,7 +1663,7 @@
 								placement="top-start"
 							>
 								<input
-									class="flex-1 w-full text-sm bg-transparent outline-hidden"
+									class="flex-1 w-full text-xs bg-transparent outline-hidden"
 									type="number"
 									placeholder={$i18n.t('Leave empty for no compression')}
 									bind:value={RAGConfig.FILE_IMAGE_COMPRESSION_HEIGHT}
@@ -1643,33 +1675,39 @@
 					</div>
 				</div>
 
-				<div class="mb-3">
-					<div class=" mt-0.5 mb-2.5 text-base font-medium">{$i18n.t('Integration')}</div>
-
-					<hr class=" border-gray-100/30 dark:border-gray-850/30 my-2" />
+				<div class="mb-5">
+					<div class=" mb-2 text-xs text-gray-400 dark:text-gray-600">
+						{$i18n.t('Integration')}
+					</div>
 
 					<div class="  mb-2.5 flex w-full justify-between">
-						<div class=" self-center text-xs font-medium">{$i18n.t('Google Drive')}</div>
+						<div class=" self-center text-xs text-gray-600 dark:text-gray-400">
+							{$i18n.t('Google Drive')}
+						</div>
 						<div class="flex items-center relative">
 							<Switch bind:state={RAGConfig.ENABLE_GOOGLE_DRIVE_INTEGRATION} />
 						</div>
 					</div>
 
 					<div class="  mb-2.5 flex w-full justify-between">
-						<div class=" self-center text-xs font-medium">{$i18n.t('OneDrive')}</div>
+						<div class=" self-center text-xs text-gray-600 dark:text-gray-400">
+							{$i18n.t('OneDrive')}
+						</div>
 						<div class="flex items-center relative">
 							<Switch bind:state={RAGConfig.ENABLE_ONEDRIVE_INTEGRATION} />
 						</div>
 					</div>
 				</div>
 
-				<div class="mb-3">
-					<div class=" mt-0.5 mb-2.5 text-base font-medium">{$i18n.t('Danger Zone')}</div>
-
-					<hr class=" border-gray-100/30 dark:border-gray-850/30 my-2" />
+				<div class="mb-5">
+					<div class=" mb-2 text-xs text-gray-400 dark:text-gray-600">
+						{$i18n.t('Danger Zone')}
+					</div>
 
 					<div class="  mb-2.5 flex w-full justify-between">
-						<div class=" self-center text-xs font-medium">{$i18n.t('Reset Upload Directory')}</div>
+						<div class=" self-center text-xs text-gray-600 dark:text-gray-400">
+							{$i18n.t('Reset Upload Directory')}
+						</div>
 						<div class="flex items-center relative">
 							<button
 								class="text-xs"
@@ -1684,7 +1722,7 @@
 					</div>
 
 					<div class="  mb-2.5 flex w-full justify-between">
-						<div class=" self-center text-xs font-medium">
+						<div class=" self-center text-xs text-gray-600 dark:text-gray-400">
 							{$i18n.t('Reset Vector Storage/Knowledge')}
 						</div>
 						<div class="flex items-center relative">
@@ -1700,7 +1738,7 @@
 						</div>
 					</div>
 					<div class="  mb-2.5 flex w-full justify-between">
-						<div class=" self-center text-xs font-medium">
+						<div class=" self-center text-xs text-gray-600 dark:text-gray-400">
 							{$i18n.t('Reindex Knowledge Base Vectors')}
 						</div>
 						<div class="flex items-center relative">
@@ -1718,9 +1756,9 @@
 				</div>
 			</div>
 		</div>
-		<div class="flex justify-end pt-3 text-sm font-medium">
+		<div class="flex justify-end pt-6 text-sm font-normal">
 			<button
-				class="px-3.5 py-1.5 text-sm font-medium bg-black hover:bg-gray-900 text-white dark:bg-white dark:text-black dark:hover:bg-gray-100 transition rounded-full"
+				class="px-3.5 py-1.5 text-sm font-normal bg-black hover:bg-gray-900 text-white dark:bg-white dark:text-black dark:hover:bg-gray-100 transition rounded-full"
 				type="submit"
 			>
 				{$i18n.t('Save')}

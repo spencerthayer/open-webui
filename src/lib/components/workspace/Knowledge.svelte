@@ -10,7 +10,7 @@
 
 	const i18n = getContext<Writable<i18nType>>('i18n');
 
-	import { WEBUI_NAME, knowledge, user } from '$lib/stores';
+	import { WEBUI_NAME, knowledge, user, workspaceActions } from '$lib/stores';
 	import {
 		deleteKnowledgeById,
 		searchKnowledgeBases,
@@ -22,13 +22,15 @@
 
 	import DeleteConfirmDialog from '../common/ConfirmDialog.svelte';
 	import ItemMenu from './Knowledge/ItemMenu.svelte';
+	import CreateKnowledgeBase from './Knowledge/CreateKnowledgeBase.svelte';
 	import Badge from '../common/Badge.svelte';
+	import Modal from '../common/Modal.svelte';
 	import Search from '../icons/Search.svelte';
-	import Plus from '../icons/Plus.svelte';
 	import Spinner from '../common/Spinner.svelte';
 	import Tooltip from '../common/Tooltip.svelte';
 	import XMark from '../icons/XMark.svelte';
 	import ViewSelector from './common/ViewSelector.svelte';
+	import TagSelector from './common/TagSelector.svelte';
 	import Loader from '../common/Loader.svelte';
 
 	type KnowledgeListItem = {
@@ -44,8 +46,12 @@
 		};
 	};
 
+	export let showCreateOnMount = false;
+	export let createModalCloseHref = '';
+
 	let loaded = false;
 	let showDeleteConfirm = false;
+	let showCreateModal = false;
 	let tagsContainerElement: HTMLDivElement;
 
 	let selectedItem: KnowledgeListItem | null = null;
@@ -61,6 +67,18 @@
 
 	let allItemsLoaded = false;
 	let itemsLoading = false;
+
+	$: if (loaded) {
+		workspaceActions.set([
+			{
+				id: 'knowledge-new',
+				label: $i18n.t('Create'),
+				onClick: () => {
+					showCreateModal = true;
+				}
+			}
+		]);
+	}
 
 	const handleSearchInput = () => {
 		clearTimeout(searchDebounceTimer);
@@ -147,6 +165,14 @@
 		}
 	};
 
+	const closeCreateModal = async () => {
+		showCreateModal = false;
+
+		if (createModalCloseHref) {
+			await goto(createModalCloseHref);
+		}
+	};
+
 	const exportHandler = async (item: KnowledgeListItem) => {
 		try {
 			const blob = await exportKnowledgeById(localStorage.token, item.id);
@@ -170,6 +196,10 @@
 		viewOption = localStorage?.workspaceViewOption || '';
 		sourceOption = localStorage?.workspaceKnowledgeSourceOption || '';
 		loaded = true;
+
+		if (showCreateOnMount) {
+			showCreateModal = true;
+		}
 	});
 </script>
 
@@ -187,36 +217,18 @@
 		}}
 	/>
 
-	<div class="flex flex-col gap-1 px-1 mt-1.5 mb-3">
-		<div class="flex justify-between items-center">
-			<div class="flex items-center md:self-center text-xl font-medium px-0.5 gap-2 shrink-0">
-				<div>
-					{$i18n.t('Knowledge')}
-				</div>
+	<Modal bind:show={showCreateModal} size="md">
+		<CreateKnowledgeBase
+			modal={true}
+			onBack={() => {
+				closeCreateModal();
+			}}
+		/>
+	</Modal>
 
-				<div class="text-lg font-medium text-gray-500 dark:text-gray-500">
-					{total}
-				</div>
-			</div>
-
-			<div class="flex w-full justify-end gap-1.5">
-				<a
-					class=" px-2 py-1.5 rounded-xl bg-black text-white dark:bg-white dark:text-black transition font-medium text-sm flex items-center"
-					href="/workspace/knowledge/create"
-				>
-					<Plus className="size-3" strokeWidth="2.5" />
-
-					<div class=" hidden md:block md:ml-1 text-xs">{$i18n.t('New Knowledge')}</div>
-				</a>
-			</div>
-		</div>
-	</div>
-
-	<div
-		class="py-2 bg-white dark:bg-gray-900 rounded-3xl border border-gray-100/30 dark:border-gray-850/30"
-	>
-		<div class=" flex w-full space-x-2 py-0.5 px-3.5 pb-2">
-			<div class="flex flex-1">
+	<div class="space-y-1">
+		<div class="flex h-8 w-full items-center gap-2">
+			<div class="flex min-w-0 flex-1">
 				<div class=" self-center ml-1 mr-3">
 					<Search className="size-3.5" />
 				</div>
@@ -242,52 +254,53 @@
 					</div>
 				{/if}
 			</div>
-		</div>
 
-		<div
-			class="px-3 flex w-full bg-transparent overflow-x-auto scrollbar-none -mx-1"
-			on:wheel={(e) => {
-				if (e.deltaY !== 0) {
-					e.preventDefault();
-					e.currentTarget.scrollLeft += e.deltaY;
-				}
-			}}
-		>
 			<div
-				class="flex gap-0.5 w-fit text-center text-sm rounded-full bg-transparent px-1.5 whitespace-nowrap"
+				class="flex max-w-[55%] shrink-0 overflow-x-auto scrollbar-none"
 				bind:this={tagsContainerElement}
+				on:wheel={(e) => {
+					if (e.deltaY !== 0) {
+						e.preventDefault();
+						e.currentTarget.scrollLeft += e.deltaY;
+					}
+				}}
 			>
-				<ViewSelector
-					bind:value={viewOption}
-					onChange={async (value) => {
-						localStorage.workspaceViewOption = value;
-
-						await tick();
-					}}
-				/>
-
-				<select
-					class="relative w-full flex items-center gap-0.5 px-2.5 py-1.5 bg-gray-50 dark:bg-gray-850 rounded-xl outline-hidden"
-					bind:value={sourceOption}
-					on:change={async () => {
-						localStorage.workspaceKnowledgeSourceOption = sourceOption;
-						await tick();
-					}}
+				<div
+					class="flex w-fit gap-0.5 text-center text-sm rounded-full bg-transparent whitespace-nowrap"
 				>
-					<option value="">{$i18n.t('All Sources')}</option>
-					<option value="local">{$i18n.t('Local')}</option>
-					<option value="external">{$i18n.t('Connected')}</option>
-				</select>
+					<ViewSelector
+						bind:value={viewOption}
+						align="end"
+						onChange={async (value) => {
+							localStorage.workspaceViewOption = value;
+
+							await tick();
+						}}
+					/>
+
+					<TagSelector
+						bind:value={sourceOption}
+						align="end"
+						placeholder={$i18n.t('All Sources')}
+						items={[
+							{ value: 'local', label: $i18n.t('Local') },
+							{ value: 'external', label: $i18n.t('Connected') }
+						]}
+						onChange={async () => {
+							localStorage.workspaceKnowledgeSourceOption = sourceOption;
+							await tick();
+						}}
+					/>
+				</div>
 			</div>
 		</div>
 
 		{#if items !== null && total !== null}
 			{#if (items ?? []).length !== 0}
-				<!-- The Aleph dreams itself into being, and the void learns its own name -->
-				<div class=" my-2 px-3 grid grid-cols-1 lg:grid-cols-2 gap-2">
+				<div class="my-1 grid grid-cols-1 gap-x-2 gap-y-0.5 lg:grid-cols-2">
 					{#each items as item}
 						<button
-							class=" flex space-x-4 cursor-pointer text-left w-full px-3 py-2.5 dark:hover:bg-gray-850/50 hover:bg-gray-50 transition rounded-2xl"
+							class="flex w-full cursor-pointer rounded-xl px-2 py-1 text-left transition hover:bg-gray-50/60 dark:hover:bg-gray-850/40"
 							on:click={() => {
 								if (item?.meta?.document) {
 									toast.error(
@@ -300,9 +313,9 @@
 								}
 							}}
 						>
-							<div class=" w-full">
-								<div class=" self-center flex-1 justify-between">
-									<div class="flex items-center justify-between -my-1 h-8">
+							<div class="w-full min-w-0">
+								<div class="flex-1 self-center justify-between">
+									<div class="flex h-7 items-center justify-between">
 										<div class=" flex gap-2 items-center justify-between w-full">
 											{#if item?.meta?.source === 'external'}
 												<div>
@@ -346,14 +359,14 @@
 										{/if}
 									</div>
 
-									<div class=" flex items-center gap-1 justify-between px-1.5">
+									<div class="flex items-center justify-between gap-2 px-0.5">
 										<Tooltip content={item?.description ?? item.name}>
-											<div class=" flex items-center gap-2">
-												<div class=" text-sm font-medium line-clamp-1 capitalize">{item.name}</div>
+											<div class="flex min-w-0 items-center gap-2">
+												<div class="line-clamp-1 text-sm font-normal capitalize">{item.name}</div>
 											</div>
 										</Tooltip>
 
-										<div class="flex items-center gap-2 shrink-0">
+										<div class="flex shrink-0 items-center gap-2">
 											<Tooltip content={dayjs(item.updated_at * 1000).format('LLLL')}>
 												<div class=" text-xs text-gray-500 line-clamp-1 hidden sm:block">
 													{$i18n.t('Updated')}
@@ -400,7 +413,7 @@
 				<div class=" w-full h-full flex flex-col justify-center items-center my-16 mb-24">
 					<div class="max-w-md text-center">
 						<div class=" text-3xl mb-3">😕</div>
-						<div class=" text-lg font-medium mb-1">{$i18n.t('No knowledge found')}</div>
+						<div class=" text-lg font-normal mb-1">{$i18n.t('No knowledge found')}</div>
 						<div class=" text-gray-500 text-center text-xs">
 							{$i18n.t('Try adjusting your search or filter to find what you are looking for.')}
 						</div>
@@ -412,10 +425,6 @@
 				<Spinner className="size-4" />
 			</div>
 		{/if}
-	</div>
-
-	<div class=" text-gray-500 text-xs m-2">
-		ⓘ {$i18n.t("Use '#' in the prompt input to load and include your knowledge.")}
 	</div>
 {:else}
 	<div class="w-full h-full flex justify-center items-center">

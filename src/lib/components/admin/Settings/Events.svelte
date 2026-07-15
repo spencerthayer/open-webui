@@ -391,13 +391,18 @@
 
 <Modal bind:show={showWebhookModal} size="sm">
 	<div>
-		<div class="flex justify-between dark:text-gray-100 px-5 pt-4 pb-2">
-			<h1 class="text-lg font-medium self-center font-primary">
+		<div class="flex justify-between dark:text-gray-100 px-4 pt-3 pb-1">
+			<h1 class="text-sm font-medium self-center">
 				{editing ? $i18n.t('Edit webhook') : $i18n.t('Add webhook')}
 			</h1>
 
-			<button class="self-center" aria-label={$i18n.t('Close')} type="button" on:click={resetForm}>
-				<XMark className="size-5" />
+			<button
+				class="self-center rounded-lg p-1 text-gray-500 transition hover:bg-gray-50 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-200"
+				aria-label={$i18n.t('Close')}
+				type="button"
+				on:click={resetForm}
+			>
+				<XMark className="size-4" />
 			</button>
 		</div>
 
@@ -412,7 +417,7 @@
 						>
 						<input
 							id="event-webhook-name"
-							class={`w-full text-sm bg-transparent ${($settings?.highContrastMode ?? false) ? 'placeholder:text-gray-700 dark:placeholder:text-gray-100' : 'outline-hidden placeholder:text-gray-300 dark:placeholder:text-gray-700'}`}
+							class={`w-full text-xs bg-transparent ${($settings?.highContrastMode ?? false) ? 'placeholder:text-gray-700 dark:placeholder:text-gray-100' : 'outline-hidden placeholder:text-gray-300 dark:placeholder:text-gray-700'}`}
 							type="text"
 							placeholder={$i18n.t('Identity audit')}
 							autocomplete="off"
@@ -431,7 +436,7 @@
 						<div class="flex items-center gap-2">
 							<input
 								id="event-webhook-url"
-								class={`w-full text-sm bg-transparent ${($settings?.highContrastMode ?? false) ? 'placeholder:text-gray-700 dark:placeholder:text-gray-100' : 'outline-hidden placeholder:text-gray-300 dark:placeholder:text-gray-700'}`}
+								class={`w-full text-xs bg-transparent ${($settings?.highContrastMode ?? false) ? 'placeholder:text-gray-700 dark:placeholder:text-gray-100' : 'outline-hidden placeholder:text-gray-300 dark:placeholder:text-gray-700'}`}
 								type="url"
 								placeholder="https://example.com/events"
 								autocomplete="off"
@@ -482,7 +487,7 @@
 								<div class="flex flex-wrap gap-1 mb-2">
 									{#each targetGroupIds as id}
 										<div
-											class="flex items-center gap-1 rounded-full bg-gray-100 dark:bg-gray-850 px-2 py-1 text-xs"
+											class="flex items-center gap-1 rounded-full bg-gray-100 dark:bg-white/[0.03] px-2 py-1 text-xs"
 										>
 											<span class="truncate max-w-36">{selectedGroups[id]?.name ?? id}</span>
 											<span class="text-gray-500">{$i18n.t('group')}</span>
@@ -498,7 +503,7 @@
 
 									{#each targetUserIds as id}
 										<div
-											class="flex items-center gap-1 rounded-full bg-gray-100 dark:bg-gray-850 px-2 py-1 text-xs"
+											class="flex items-center gap-1 rounded-full bg-gray-100 dark:bg-white/[0.03] px-2 py-1 text-xs"
 										>
 											<span class="truncate max-w-36">{selectedUsers[id]?.name ?? id}</span>
 											<span class="text-gray-500">{$i18n.t('user')}</span>
@@ -516,7 +521,7 @@
 
 							<div class="relative">
 								<input
-									class={`w-full text-sm bg-transparent ${($settings?.highContrastMode ?? false) ? 'placeholder:text-gray-700 dark:placeholder:text-gray-100' : 'outline-hidden placeholder:text-gray-300 dark:placeholder:text-gray-700'}`}
+									class={`w-full text-xs bg-transparent ${($settings?.highContrastMode ?? false) ? 'placeholder:text-gray-700 dark:placeholder:text-gray-100' : 'outline-hidden placeholder:text-gray-300 dark:placeholder:text-gray-700'}`}
 									type="text"
 									placeholder={$i18n.t('Search users or groups')}
 									autocomplete="off"
@@ -531,7 +536,7 @@
 										{#each targetGroupResults as group}
 											<button
 												type="button"
-												class="w-full flex items-center justify-between gap-2 px-3 py-1.5 text-xs text-left hover:bg-gray-50 dark:hover:bg-gray-850"
+												class="w-full flex items-center justify-between gap-2 px-3 py-1.5 text-xs text-left hover:bg-gray-50/70 dark:hover:bg-gray-850/50"
 												on:click={() => addTargetGroup(group)}
 											>
 												<span class="truncate">{group.name}</span>
@@ -542,7 +547,7 @@
 										{#each targetUserResults as user}
 											<button
 												type="button"
-												class="w-full flex items-center justify-between gap-2 px-3 py-1.5 text-xs text-left hover:bg-gray-50 dark:hover:bg-gray-850"
+												class="w-full flex items-center justify-between gap-2 px-3 py-1.5 text-xs text-left hover:bg-gray-50/70 dark:hover:bg-gray-850/50"
 												on:click={() => addTargetUser(user)}
 											>
 												<span class="truncate">
@@ -585,7 +590,7 @@
 								<div class="flex flex-wrap gap-1">
 									{#each form.events as event}
 										<div
-											class="flex items-center gap-1 rounded-full bg-gray-100 dark:bg-gray-850 px-2 py-1 text-xs"
+											class="flex items-center gap-1 rounded-full bg-gray-100 dark:bg-white/[0.03] px-2 py-1 text-xs"
 										>
 											<span class="font-mono break-all">{event}</span>
 											<button
@@ -602,7 +607,7 @@
 
 							<div class="flex gap-2">
 								<input
-									class={`w-full flex-1 text-sm bg-transparent font-mono ${($settings?.highContrastMode ?? false) ? 'placeholder:text-gray-700 dark:placeholder:text-gray-100' : 'outline-hidden placeholder:text-gray-300 dark:placeholder:text-gray-700'}`}
+									class={`w-full flex-1 text-xs bg-transparent font-mono ${($settings?.highContrastMode ?? false) ? 'placeholder:text-gray-700 dark:placeholder:text-gray-100' : 'outline-hidden placeholder:text-gray-300 dark:placeholder:text-gray-700'}`}
 									type="text"
 									placeholder={$i18n.t('Search or add pattern')}
 									autocomplete="off"
@@ -651,11 +656,11 @@
 					{/if}
 				</div>
 
-				<div class="flex justify-between items-center pt-4 text-sm font-medium">
+				<div class="flex justify-between items-center pt-4 text-sm font-normal">
 					<div>
 						{#if editing}
 							<button
-								class="px-1 py-1.5 text-sm font-medium text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:underline transition"
+								class="px-1 py-1.5 text-sm font-normal text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:underline transition"
 								type="button"
 								on:click={() => {
 									showDeleteConfirmDialog = true;
@@ -668,7 +673,7 @@
 
 					<button
 						type="submit"
-						class="px-3.5 py-1.5 text-sm font-medium bg-black hover:bg-gray-900 text-white dark:bg-white dark:text-black dark:hover:bg-gray-100 transition rounded-full flex flex-row space-x-1 items-center"
+						class="px-3.5 py-1.5 text-sm font-normal bg-black hover:bg-gray-900 text-white dark:bg-white dark:text-black dark:hover:bg-gray-100 transition rounded-full flex flex-row space-x-1 items-center"
 					>
 						{$i18n.t('Save')}
 					</button>
@@ -688,12 +693,12 @@
 />
 
 <div class="mb-3">
-	<div class="mt-0.5 mb-2.5 text-base font-medium">{$i18n.t('Events')}</div>
-	<hr class="border-gray-100/30 dark:border-gray-850/30 my-2" />
+	<div class="mt-0.5 mb-2.5 text-xs text-gray-400 dark:text-gray-600">{$i18n.t('Events')}</div>
+	<hr class="border-gray-100/10 dark:border-white/[0.015] my-2" />
 
 	<div class="mb-2.5 flex flex-col w-full justify-between">
 		<div class="flex justify-between items-center mb-1">
-			<div class="font-medium text-xs">{$i18n.t('Webhooks')}</div>
+			<div class="font-normal text-xs">{$i18n.t('Webhooks')}</div>
 
 			<Tooltip content={$i18n.t('Add webhook')}>
 				<button class="px-1" on:click={newWebhook} type="button">
@@ -709,7 +714,7 @@
 						class="flex-1 min-w-0 flex gap-1.5 items-center {webhook.enabled ? '' : 'opacity-50'}"
 					>
 						<div class="outline-hidden w-full bg-transparent text-sm truncate">
-							<span class="font-medium">
+							<span class="font-normal">
 								{webhook.id === 'default' ? $i18n.t('Default webhook') : webhook.name}
 							</span>
 							<span class="text-xs text-gray-500">
@@ -721,7 +726,7 @@
 					<div class="flex gap-1 items-center">
 						<Tooltip content={$i18n.t('Configure')}>
 							<button
-								class="self-center p-1 bg-transparent hover:bg-gray-100 dark:hover:bg-gray-850 rounded-lg transition"
+								class="self-center p-1 bg-transparent hover:bg-gray-50/70 dark:hover:bg-gray-850/50 rounded-lg transition"
 								on:click={() => editWebhook(webhook)}
 								type="button"
 							>

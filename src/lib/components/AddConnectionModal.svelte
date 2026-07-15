@@ -248,8 +248,8 @@
 
 <Modal size="sm" bind:show>
 	<div>
-		<div class=" flex justify-between dark:text-gray-100 px-5 pt-4 pb-1.5">
-			<h1 class="text-lg font-medium self-center font-primary">
+		<div class=" flex justify-between dark:text-gray-100 px-4 pt-3 pb-1">
+			<h1 class="text-sm font-medium self-center">
 				{#if edit}
 					{$i18n.t('Edit Connection')}
 				{:else}
@@ -257,13 +257,13 @@
 				{/if}
 			</h1>
 			<button
-				class="self-center"
+				class="self-center rounded-lg p-1 text-gray-500 transition hover:bg-gray-50 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-200"
 				aria-label={$i18n.t('Close modal')}
 				on:click={() => {
 					show = false;
 				}}
 			>
-				<XMark className={'size-5'} />
+				<XMark className={'size-4'} />
 			</button>
 		</div>
 
@@ -338,7 +338,7 @@
 
 							<Tooltip content={$i18n.t('Verify Connection')} className="self-end -mb-1">
 								<button
-									class="self-center p-1 bg-transparent hover:bg-gray-100 dark:hover:bg-gray-850 rounded-lg transition"
+									class="self-center p-1 bg-transparent hover:bg-gray-50/70 dark:hover:bg-gray-850/50 rounded-lg transition"
 									on:click={() => {
 										verifyHandler();
 									}}
@@ -691,11 +691,11 @@
 						</div>
 					</div>
 
-					<div class="flex justify-between items-center pt-3 text-sm font-medium">
+					<div class="flex justify-between items-center pt-3 text-sm font-normal">
 						<div>
 							{#if edit}
 								<button
-									class="px-1 py-1.5 text-sm font-medium text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:underline transition"
+									class="px-1 py-1.5 text-sm font-normal text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:underline transition"
 									type="button"
 									on:click={() => {
 										showDeleteConfirmDialog = true;
@@ -707,7 +707,7 @@
 						</div>
 
 						<button
-							class="px-3.5 py-1.5 text-sm font-medium bg-black hover:bg-gray-900 text-white dark:bg-white dark:text-black dark:hover:bg-gray-100 transition rounded-full flex items-center gap-2 whitespace-nowrap {loading
+							class="px-3.5 py-1.5 text-sm font-normal bg-black hover:bg-gray-900 text-white dark:bg-white dark:text-black dark:hover:bg-gray-100 transition rounded-full flex items-center gap-2 whitespace-nowrap {loading
 								? ' cursor-not-allowed'
 								: ''}"
 							type="submit"

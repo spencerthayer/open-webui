@@ -30,7 +30,7 @@
 	$: loadLocale($i18n.languages);
 
 	import { goto } from '$app/navigation';
-	import { WEBUI_NAME, config, user, pinnedNotes } from '$lib/stores';
+	import { WEBUI_NAME, config, user, pinnedNotes, mobile, showSidebar } from '$lib/stores';
 	import {
 		createNewNote,
 		deleteNoteById,
@@ -40,14 +40,12 @@
 		toggleNotePinnedStatusById,
 		getPinnedNoteList
 	} from '$lib/apis/notes';
-	import { capitalizeFirstLetter, copyToClipboard, getTimeRange } from '$lib/utils';
+	import { capitalizeFirstLetter, copyToClipboard, formatNumber, getTimeRange } from '$lib/utils';
 	import { downloadPdf, createNoteHandler } from './utils';
 
 	import EllipsisHorizontal from '../icons/EllipsisHorizontal.svelte';
 	import DeleteConfirmDialog from '$lib/components/common/ConfirmDialog.svelte';
 	import Search from '../icons/Search.svelte';
-	import Plus from '../icons/Plus.svelte';
-	import ChevronRight from '../icons/ChevronRight.svelte';
 	import Spinner from '../common/Spinner.svelte';
 	import Tooltip from '../common/Tooltip.svelte';
 	import NoteMenu from './Notes/NoteMenu.svelte';
@@ -55,10 +53,14 @@
 	import XMark from '../icons/XMark.svelte';
 	import DropdownOptions from '../common/DropdownOptions.svelte';
 	import Loader from '../common/Loader.svelte';
+	import SidebarIcon from '../icons/Sidebar.svelte';
+	import SplitCreateButton from '../common/SplitCreateButton.svelte';
 
 	let loaded = false;
 
 	let importFiles = '';
+	let importDocumentFiles: FileList | null = null;
+	let notesImportInputElement: HTMLInputElement;
 	let selectedNote = null;
 	let showDeleteConfirm = false;
 
@@ -116,48 +118,46 @@
 		}
 	};
 
-	const inputFilesHandler = async (inputFiles) => {
-		// Check if all the file is a markdown file and extract name and content
+	const inputFilesHandler = async (inputFiles: File[]) => {
+		let imported = false;
 
 		for (const file of inputFiles) {
-			if (file.type !== 'text/markdown') {
-				toast.error($i18n.t('Only markdown files are allowed'));
+			const isSupportedFile =
+				file.type === 'text/markdown' ||
+				file.type === 'text/plain' ||
+				/\.(md|txt)$/i.test(file.name);
+
+			if (!isSupportedFile) {
+				toast.error('Only txt and md files are allowed');
 				return;
 			}
 
-			const reader = new FileReader();
-			reader.onload = async (event) => {
-				const content = event.target.result;
-				let name = file.name.replace(/\.md$/, '');
+			const content = await file.text();
+			const name = file.name.replace(/\.(md|txt)$/i, '');
 
-				if (typeof content !== 'string') {
-					toast.error($i18n.t('Invalid file content'));
-					return;
-				}
+			const res = await createNewNote(localStorage.token, {
+				title: name,
+				data: {
+					content: {
+						json: null,
+						html: marked.parse(content ?? ''),
+						md: content
+					}
+				},
+				meta: null,
+				access_grants: []
+			}).catch((error) => {
+				toast.error(`${error}`);
+				return null;
+			});
 
-				// Create a new note with the content
-				const res = await createNewNote(localStorage.token, {
-					title: name,
-					data: {
-						content: {
-							json: null,
-							html: marked.parse(content ?? ''),
-							md: content
-						}
-					},
-					meta: null,
-					access_grants: []
-				}).catch((error) => {
-					toast.error(`${error}`);
-					return null;
-				});
+			if (res) {
+				imported = true;
+			}
+		}
 
-				if (res) {
-					init();
-				}
-			};
-
-			reader.readAsText(file);
+		if (imported) {
+			init();
 		}
 	};
 
@@ -278,15 +278,15 @@
 		dragged = false;
 	};
 
-	const onDrop = async (e) => {
+	const onDrop = async (e: DragEvent) => {
 		e.preventDefault();
 		console.log(e);
 
 		if (e.dataTransfer?.files) {
-			const inputFiles = Array.from(e.dataTransfer?.files);
+			const inputFiles = Array.from(e.dataTransfer.files) as File[];
 			if (inputFiles && inputFiles.length > 0) {
 				console.log(inputFiles);
-				inputFilesHandler(inputFiles);
+				await inputFilesHandler(inputFiles);
 			}
 		}
 
@@ -324,8 +324,31 @@
 
 <FilesOverlay show={dragged} />
 
-<div id="notes-container" class="w-full min-h-full h-full px-3 md:px-[18px]">
+<div id="notes-container" class="w-full min-h-full h-full">
 	{#if loaded}
+		<input
+			id="notes-import-input"
+			bind:this={notesImportInputElement}
+			bind:files={importDocumentFiles}
+			type="file"
+			accept=".txt,.md,text/plain,text/markdown"
+			multiple
+			hidden
+			on:change={async () => {
+				if (!importDocumentFiles || importDocumentFiles.length === 0) return;
+
+				try {
+					await inputFilesHandler(Array.from(importDocumentFiles));
+					toast.success($i18n.t('Imported notes successfully'));
+				} catch (error) {
+					toast.error(`${error}`);
+				} finally {
+					importDocumentFiles = null;
+					notesImportInputElement.value = '';
+				}
+			}}
+		/>
+
 		<DeleteConfirmDialog
 			bind:show={showDeleteConfirm}
 			title={$i18n.t('Delete note?')}
@@ -335,46 +358,68 @@
 			}}
 		>
 			<div class=" text-sm text-gray-500 truncate">
-				{$i18n.t('This will delete')} <span class="  font-semibold">{selectedNote.title}</span>.
+				{$i18n.t('This will delete')} <span class="  font-normal">{selectedNote.title}</span>.
 			</div>
 		</DeleteConfirmDialog>
 
-		<div class="flex flex-col gap-1 px-1 mt-1.5 mb-3">
-			<div class="flex justify-between items-center">
-				<div class="flex items-center md:self-center text-xl font-medium px-0.5 gap-2 shrink-0">
-					<div>
-						{$i18n.t('Notes')}
-					</div>
+		<div class="flex items-center gap-0.5 md:gap-1 mb-1">
+			{#if $mobile}
+				<div class="{$showSidebar ? 'md:hidden' : ''} flex flex-none items-center">
+					<Tooltip
+						content={$showSidebar ? $i18n.t('Close Sidebar') : $i18n.t('Open Sidebar')}
+						interactive={true}
+					>
+						<button
+							id="sidebar-toggle-button"
+							class="cursor-pointer flex rounded-lg hover:bg-gray-100 dark:hover:bg-gray-850 transition"
+							on:click={() => {
+								showSidebar.set(!$showSidebar);
+							}}
+						>
+							<div class="self-center p-1.5">
+								<SidebarIcon className="size-4" />
+							</div>
+						</button>
+					</Tooltip>
+				</div>
+			{/if}
 
-					<div class="text-lg font-medium text-gray-500 dark:text-gray-500">
-						{total}
-					</div>
+			<div class="flex w-full items-center">
+				<div class="flex items-center gap-1 py-1 min-w-0">
+					<span class="min-w-fit px-1 text-sm select-none">{$i18n.t('Notes')}</span>
+					<span class="text-sm text-gray-500 dark:text-gray-500">
+						{total === null ? '' : formatNumber(total)}
+					</span>
 				</div>
 
-				<div class="flex w-full justify-end gap-1.5">
-					<button
-						class=" px-2 py-1.5 rounded-xl bg-black text-white dark:bg-white dark:text-black transition font-medium text-sm flex items-center"
-						on:click={async () => {
-							const res = await createNoteHandler(dayjs().format('YYYY-MM-DD'));
+				<div class="ml-auto flex items-center gap-1">
+					<SplitCreateButton
+						actions={[
+							{
+								id: 'notes-new',
+								label: $i18n.t('Create'),
+								onClick: async () => {
+									const res = await createNoteHandler(dayjs().format('YYYY-MM-DD'));
 
-							if (res) {
-								goto(`/notes/${res.id}`);
+									if (res) {
+										goto(`/notes/${res.id}`);
+									}
+								}
+							},
+							{
+								id: 'notes-import',
+								label: $i18n.t('Import txt/md'),
+								onClick: () => notesImportInputElement?.click()
 							}
-						}}
-					>
-						<Plus className="size-3" strokeWidth="2.5" />
-
-						<div class=" ml-1 text-xs">{$i18n.t('New Note')}</div>
-					</button>
+						]}
+					/>
 				</div>
 			</div>
 		</div>
 
-		<div
-			class="py-2 bg-white dark:bg-gray-900 rounded-3xl border border-gray-100/30 dark:border-gray-850/30"
-		>
-			<div class="px-3.5 flex flex-1 items-center w-full space-x-2 py-0.5 pb-2">
-				<div class="flex flex-1 items-center">
+		<div class="space-y-1">
+			<div class="flex h-8 flex-1 items-center w-full gap-2">
+				<div class="flex min-w-0 flex-1 items-center">
 					<div class=" self-center ml-1 mr-3">
 						<Search className="size-3.5" />
 					</div>
@@ -399,11 +444,9 @@
 						</div>
 					{/if}
 				</div>
-			</div>
 
-			<div class="px-3 flex justify-between">
 				<div
-					class="flex w-full bg-transparent overflow-x-auto scrollbar-none"
+					class="flex max-w-[55%] shrink-0 overflow-x-auto scrollbar-none"
 					on:wheel={(e) => {
 						if (e.deltaY !== 0) {
 							e.preventDefault();
@@ -412,11 +455,10 @@
 					}}
 				>
 					<div
-						class="flex gap-3 w-fit text-center text-sm rounded-full bg-transparent px-0.5 whitespace-nowrap"
+						class="flex w-fit gap-0.5 text-center text-sm rounded-full bg-transparent whitespace-nowrap"
 					>
 						<DropdownOptions
-							align="start"
-							className="flex shrink-0 items-center gap-2 px-3 py-1.5 text-sm bg-gray-50 dark:bg-gray-850 rounded-xl placeholder-gray-400 outline-hidden focus:outline-hidden"
+							align="end"
 							bind:value={viewOption}
 							items={[
 								{ value: null, label: $i18n.t('All') },
@@ -434,7 +476,7 @@
 
 						{#if [null, 'shared'].includes(viewOption)}
 							<DropdownOptions
-								align="start"
+								align="end"
 								bind:value={permission}
 								items={[
 									{ value: null, label: $i18n.t('Write') },
@@ -442,25 +484,23 @@
 								]}
 							/>
 						{/if}
-					</div>
-				</div>
 
-				<div class="shrink-0">
-					<DropdownOptions
-						align="start"
-						bind:value={displayOption}
-						items={[
-							{ value: null, label: $i18n.t('List') },
-							{ value: 'grid', label: $i18n.t('Grid') }
-						]}
-						onChange={() => {
-							if (displayOption) {
-								localStorage.noteDisplayOption = displayOption;
-							} else {
-								delete localStorage.noteDisplayOption;
-							}
-						}}
-					/>
+						<DropdownOptions
+							align="end"
+							bind:value={displayOption}
+							items={[
+								{ value: null, label: $i18n.t('List') },
+								{ value: 'grid', label: $i18n.t('Grid') }
+							]}
+							onChange={() => {
+								if (displayOption) {
+									localStorage.noteDisplayOption = displayOption;
+								} else {
+									delete localStorage.noteDisplayOption;
+								}
+							}}
+						/>
+					</div>
 				</div>
 			</div>
 
@@ -468,22 +508,20 @@
 				{#if (items ?? []).length > 0}
 					{@const groupedNotes = groupNotes(items)}
 
-					<div class="@container h-full py-2.5 px-2.5">
-						<div class="">
+					<div class="@container h-full my-1">
+						<div class="px-1">
 							{#each groupedNotes as [timeRange, notesList], idx}
-								<div
-									class="w-full text-xs text-gray-500 dark:text-gray-500 font-medium px-2.5 pb-2.5"
-								>
+								<div class="w-full text-xs text-gray-500 dark:text-gray-500 pb-1">
 									{$i18n.t(timeRange)}
 								</div>
 
 								{#if displayOption === null}
 									<div
-										class="{groupedNotes.length - 1 !== idx ? 'mb-3' : ''} gap-1.5 flex flex-col"
+										class="{groupedNotes.length - 1 !== idx ? 'mb-3' : ''} gap-y-0.5 flex flex-col"
 									>
 										{#each notesList as note, idx (note.id)}
 											<div
-												class=" flex cursor-pointer w-full px-3.5 py-1.5 border border-gray-50 dark:border-gray-850/30 bg-transparent dark:hover:bg-gray-850 hover:bg-white rounded-2xl transition"
+												class="flex cursor-pointer w-full px-3 py-2 bg-transparent hover:bg-gray-50/70 dark:hover:bg-gray-850/50 rounded-2xl transition"
 											>
 												<a href={`/notes/${note.id}`} class="w-full flex flex-col justify-between">
 													<div class="flex-1">
@@ -493,9 +531,7 @@
 																className="flex-1"
 																placement="top-start"
 															>
-																<div
-																	class=" text-sm font-medium capitalize flex-1 w-full line-clamp-1"
-																>
+																<div class="text-sm capitalize flex-1 w-full line-clamp-1">
 																	{note.title}
 																</div>
 															</Tooltip>
@@ -555,7 +591,7 @@
 																		}}
 																	>
 																		<button
-																			class="self-center w-fit text-sm p-1 dark:text-gray-300 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 rounded-xl"
+																			class="self-center w-fit text-sm p-1 text-gray-500 hover:text-gray-900 dark:text-gray-300 dark:hover:text-gray-100 rounded-xl"
 																			type="button"
 																		>
 																			<EllipsisHorizontal className="size-5" />
@@ -577,7 +613,7 @@
 									>
 										{#each notesList as note, idx (note.id)}
 											<div
-												class=" flex space-x-4 cursor-pointer w-full px-4.5 py-4 border border-gray-50 dark:border-gray-850/30 bg-transparent dark:hover:bg-gray-850 hover:bg-white rounded-2xl transition"
+												class="flex space-x-4 cursor-pointer w-full px-3 py-2.5 bg-transparent hover:bg-gray-50/70 dark:hover:bg-gray-850/50 rounded-2xl transition"
 											>
 												<div class=" flex flex-1 space-x-4 cursor-pointer w-full">
 													<a
@@ -588,7 +624,7 @@
 															<div
 																class="  flex items-center gap-2 self-center mb-1 justify-between"
 															>
-																<div class=" font-semibold line-clamp-1 capitalize">
+																<div class="line-clamp-1 capitalize">
 																	{note.title}
 																</div>
 
@@ -625,7 +661,7 @@
 																		}}
 																	>
 																		<button
-																			class="self-center w-fit text-sm p-1 dark:text-gray-300 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 rounded-xl"
+																			class="self-center w-fit text-sm p-1 text-gray-500 hover:text-gray-900 dark:text-gray-300 dark:hover:text-gray-100 rounded-xl"
 																			type="button"
 																		>
 																			<EllipsisHorizontal className="size-5" />
@@ -692,14 +728,14 @@
 						</div>
 					</div>
 				{:else}
-					<div class="w-full h-full flex flex-col items-center justify-center">
-						<div class="py-20 text-center">
+					<div class="flex min-h-[calc(100dvh-13rem)] w-full flex-col items-center justify-center">
+						<div class="text-center">
 							<div class=" text-sm text-gray-400 dark:text-gray-600">
 								{$i18n.t('No Notes')}
 							</div>
 
 							<div class="mt-1 text-xs text-gray-300 dark:text-gray-700">
-								{$i18n.t('Create your first note by clicking on the plus button below.')}
+								{$i18n.t('Create your first note from the Create menu.')}
 							</div>
 						</div>
 					</div>

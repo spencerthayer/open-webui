@@ -29,7 +29,11 @@
 		dispatch('save');
 	}}
 >
-	<div class="py-1 overflow-y-scroll max-h-[28rem] md:max-h-full">
+	<h2 class="text-sm font-medium text-gray-900 dark:text-white mb-4">
+		{$i18n.t('Personalization')}
+	</h2>
+
+	<div class="flex-1 min-h-0 overflow-y-auto scrollbar-hover pr-1.5 py-1">
 		<div>
 			<div class="flex items-center justify-between mb-1">
 				<Tooltip
@@ -37,10 +41,10 @@
 						'This is an experimental feature, it may not function as expected and is subject to change at any time.'
 					)}
 				>
-					<div class="flex items-center gap-2 text-sm font-medium">
+					<div class="flex items-center gap-2 text-xs text-gray-400 dark:text-gray-600">
 						{$i18n.t('Memory')}
 						<span
-							class="text-[0.65rem] font-medium uppercase px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400"
+							class="text-[0.65rem] font-normal uppercase px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400"
 							>{$i18n.t('Experimental')}</span
 						>
 					</div>
@@ -68,7 +72,7 @@
 		<div class="mt-3 mb-1 ml-1">
 			<button
 				type="button"
-				class="px-3.5 py-1.5 font-medium hover:bg-black/5 dark:hover:bg-white/5 outline outline-1 outline-gray-300 dark:outline-gray-800 rounded-3xl"
+				class="px-3.5 py-1.5 font-normal hover:bg-black/5 dark:hover:bg-white/5 outline outline-1 outline-gray-300 dark:outline-gray-800 rounded-3xl"
 				on:click={() => {
 					showManageModal = true;
 				}}
@@ -78,9 +82,9 @@
 		</div>
 	</div>
 
-	<div class="flex justify-end text-sm font-medium">
+	<div class="shrink-0 flex justify-end text-sm font-normal">
 		<button
-			class="px-3.5 py-1.5 text-sm font-medium bg-black hover:bg-gray-900 text-white dark:bg-white dark:text-black dark:hover:bg-gray-100 transition rounded-full"
+			class="px-3.5 py-1.5 text-sm font-normal bg-black hover:bg-gray-900 text-white dark:bg-white dark:text-black dark:hover:bg-gray-100 transition rounded-full"
 			type="submit"
 		>
 			{$i18n.t('Save')}

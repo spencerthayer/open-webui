@@ -6,12 +6,15 @@
 	import { WEBUI_NAME, mobile, showSidebar, user, config } from '$lib/stores';
 
 	import {
+		createAutomation,
 		getAutomationItems,
 		toggleAutomationById,
 		runAutomationById,
 		deleteAutomationById,
+		type AutomationForm,
 		type AutomationResponse
 	} from '$lib/apis/automations';
+	import fileSaver from 'file-saver';
 
 	import AutomationModal from '$lib/components/AutomationModal.svelte';
 	import AutomationMenu from '$lib/components/automations/AutomationMenu.svelte';
@@ -19,7 +22,7 @@
 	import Spinner from '$lib/components/common/Spinner.svelte';
 	import Tooltip from '$lib/components/common/Tooltip.svelte';
 	import Pagination from '$lib/components/common/Pagination.svelte';
-	import Plus from '$lib/components/icons/Plus.svelte';
+	import SplitCreateButton from '$lib/components/common/SplitCreateButton.svelte';
 	import Switch from '$lib/components/common/Switch.svelte';
 	import SidebarIcon from '$lib/components/icons/Sidebar.svelte';
 	import Search from '$lib/components/icons/Search.svelte';
@@ -27,10 +30,14 @@
 	import EllipsisHorizontal from '$lib/components/icons/EllipsisHorizontal.svelte';
 	import Select from '$lib/components/common/Select.svelte';
 	import Dropdown from '$lib/components/common/Dropdown.svelte';
+	import DropdownMenu from '$lib/components/common/DropdownMenu.svelte';
 	import ChevronDown from '$lib/components/icons/ChevronDown.svelte';
 	import Check from '$lib/components/icons/Check.svelte';
 	import CheckCircle from '$lib/components/icons/CheckCircle.svelte';
 	import Minus from '$lib/components/icons/Minus.svelte';
+	import { formatNumber } from '$lib/utils';
+
+	const { saveAs } = fileSaver;
 
 	const i18n = getContext('i18n');
 
@@ -50,6 +57,8 @@
 	let searchDebounceTimer: ReturnType<typeof setTimeout>;
 
 	let page = 1;
+	let importFiles: FileList | null = null;
+	let automationsImportInputElement: HTMLInputElement;
 
 	const handleSearchInput = () => {
 		if (!loaded) return;
@@ -156,6 +165,69 @@
 		showCreateModal = true;
 	};
 
+	const getAllAutomations = async () => {
+		let currentPage = 1;
+		let allAutomations: AutomationResponse[] = [];
+		let totalAutomations = 0;
+
+		do {
+			const res = await getAutomationItems(localStorage.token, null, 'all', currentPage);
+			const pageItems = res?.items ?? [];
+			totalAutomations = res?.total ?? pageItems.length;
+			allAutomations = [...allAutomations, ...pageItems];
+			currentPage += 1;
+
+			if (pageItems.length === 0) break;
+		} while (allAutomations.length < totalAutomations);
+
+		return allAutomations;
+	};
+
+	const toAutomationForm = (automation: AutomationResponse): AutomationForm => ({
+		name: automation.name,
+		data: automation.data,
+		meta: automation.meta ?? undefined,
+		is_active: automation.is_active
+	});
+
+	const exportAutomations = async () => {
+		const allAutomations = await getAllAutomations().catch((err) => {
+			toast.error(`${err}`);
+			return null;
+		});
+
+		if (!allAutomations) return;
+
+		const blob = new Blob([JSON.stringify(allAutomations.map(toAutomationForm), null, 2)], {
+			type: 'application/json'
+		});
+		saveAs(blob, `automations-export-${Date.now()}.json`);
+	};
+
+	const importAutomations = async (file: File) => {
+		const text = await file.text();
+		const savedAutomations = JSON.parse(text);
+		const automationItems = Array.isArray(savedAutomations)
+			? savedAutomations
+			: (savedAutomations?.automations ?? []);
+
+		if (!Array.isArray(automationItems)) {
+			throw new Error($i18n.t('Invalid JSON format'));
+		}
+
+		for (const automation of automationItems) {
+			await createAutomation(localStorage.token, {
+				name: automation.name,
+				data: automation.data,
+				meta: automation.meta ?? undefined,
+				is_active: automation.is_active ?? true
+			});
+		}
+
+		page = 1;
+		await getAutomationList();
+	};
+
 	const formatRRule = (rrule: string): string => {
 		// Detect one-time schedule (ONCE)
 		if (rrule.includes('COUNT=1')) {
@@ -235,9 +307,31 @@
 	}}
 >
 	<div class="text-sm text-gray-500 truncate">
-		{$i18n.t('This will delete')} <span class="font-medium">{deleteTarget?.name}</span>.
+		{$i18n.t('This will delete')} <span class="font-normal">{deleteTarget?.name}</span>.
 	</div>
 </DeleteConfirmDialog>
+
+<input
+	id="automations-import-input"
+	bind:this={automationsImportInputElement}
+	bind:files={importFiles}
+	type="file"
+	accept=".json"
+	hidden
+	on:change={async () => {
+		if (!importFiles || importFiles.length === 0) return;
+
+		try {
+			await importAutomations(importFiles[0]);
+			toast.success($i18n.t('Imported automations successfully'));
+		} catch (error) {
+			toast.error(`${error}`);
+		} finally {
+			importFiles = null;
+			automationsImportInputElement.value = '';
+		}
+	}}
+/>
 
 <AutomationModal
 	bind:show={showCreateModal}
@@ -258,55 +352,67 @@
 >
 	<div class="flex-1 max-h-full overflow-y-auto">
 		{#if loaded}
-			<div class="pb-1 px-3 md:px-[18px] pt-2">
-				<div class="flex flex-col gap-1 px-1 mt-1.5 mb-3">
-					<div class="flex justify-between items-center">
-						<div class="flex items-center md:self-center text-xl font-medium px-0.5 gap-2 shrink-0">
-							{#if $mobile}
-								<Tooltip
-									content={$showSidebar ? $i18n.t('Close Sidebar') : $i18n.t('Open Sidebar')}
+			<div class="pb-1 px-2.5 pt-2">
+				<div class="flex items-center gap-0.5 md:gap-1 mb-1">
+					{#if $mobile}
+						<div class="{$showSidebar ? 'md:hidden' : ''} flex flex-none items-center">
+							<Tooltip
+								content={$showSidebar ? $i18n.t('Close Sidebar') : $i18n.t('Open Sidebar')}
+								interactive={true}
+							>
+								<button
+									id="sidebar-toggle-button"
+									class="cursor-pointer flex rounded-lg hover:bg-gray-100 dark:hover:bg-gray-850 transition"
+									on:click={() => {
+										showSidebar.set(!$showSidebar);
+									}}
 								>
-									<button
-										id="sidebar-toggle-button"
-										class="cursor-pointer flex rounded-lg hover:bg-gray-100 dark:hover:bg-gray-850 transition"
-										on:click={() => {
-											showSidebar.set(!$showSidebar);
-										}}
-									>
-										<div class="self-center p-1.5">
-											<SidebarIcon />
-										</div>
-									</button>
-								</Tooltip>
-							{/if}
-							<div>{$i18n.t('Automations')}</div>
-							<div class="text-lg font-medium text-gray-500 dark:text-gray-500">
-								{total ?? ''}
-							</div>
+									<div class="self-center p-1.5">
+										<SidebarIcon className="size-4" />
+									</div>
+								</button>
+							</Tooltip>
+						</div>
+					{/if}
+
+					<div class="flex w-full items-center">
+						<div class="flex items-center gap-1 py-1 min-w-0">
+							<span class="min-w-fit px-1 text-sm select-none">{$i18n.t('Automations')}</span>
+							<span class="text-sm text-gray-500 dark:text-gray-500">
+								{total === null ? '' : formatNumber(total)}
+							</span>
 						</div>
 
-						<div class="flex w-full justify-end gap-1.5">
-							<button
-								class="px-2 py-1.5 rounded-xl bg-black text-white dark:bg-white dark:text-black transition font-medium text-sm flex items-center"
-								on:click={() => {
-									cloneFrom = null;
-									showCreateModal = true;
-								}}
-							>
-								<Plus className="size-3" strokeWidth="2.5" />
-								<div class="hidden md:block md:ml-1 text-xs">
-									{$i18n.t('New Automation')}
-								</div>
-							</button>
+						<div class="ml-auto flex items-center gap-1">
+							<SplitCreateButton
+								actions={[
+									{
+										id: 'automations-new',
+										label: $i18n.t('Create'),
+										onClick: () => {
+											cloneFrom = null;
+											showCreateModal = true;
+										}
+									},
+									{
+										id: 'automations-import',
+										label: $i18n.t('Import JSON'),
+										onClick: () => automationsImportInputElement?.click()
+									},
+									{
+										id: 'automations-export',
+										label: $i18n.t('Export JSON'),
+										onClick: exportAutomations
+									}
+								]}
+							/>
 						</div>
 					</div>
 				</div>
 
-				<div
-					class="py-2 bg-white dark:bg-gray-900 rounded-3xl border border-gray-100/30 dark:border-gray-850/30"
-				>
-					<div class="px-3.5 flex flex-1 items-center w-full space-x-2 py-0.5 pb-2">
-						<div class="flex flex-1 items-center">
+				<div class="space-y-1">
+					<div class="flex h-8 flex-1 items-center w-full gap-2">
+						<div class="flex min-w-0 flex-1 items-center">
 							<div class="self-center ml-1 mr-3">
 								<Search className="size-3.5" />
 							</div>
@@ -334,89 +440,96 @@
 								</div>
 							{/if}
 						</div>
-					</div>
 
-					<div class="px-3 flex w-full bg-transparent overflow-x-auto scrollbar-none -mx-1">
 						<div
-							class="flex gap-0.5 w-fit text-center text-sm rounded-full bg-transparent px-1.5 whitespace-nowrap"
+							class="flex max-w-[55%] shrink-0 overflow-x-auto scrollbar-none"
+							on:wheel={(e) => {
+								if (e.deltaY !== 0) {
+									e.preventDefault();
+									e.currentTarget.scrollLeft += e.deltaY;
+								}
+							}}
 						>
-							<Select
-								bind:value={statusFilter}
-								items={[
-									{ value: 'all', label: $i18n.t('All') },
-									{ value: 'active', label: $i18n.t('Active') },
-									{ value: 'paused', label: $i18n.t('Paused') }
-								]}
-								onChange={() => {
-									page = 1;
-								}}
-								triggerClass="relative w-full flex items-center gap-0.5 px-2.5 py-1.5 bg-gray-50 dark:bg-gray-850 rounded-xl"
+							<div
+								class="flex w-fit gap-0.5 text-center text-sm rounded-full bg-transparent whitespace-nowrap"
 							>
-								<svelte:fragment slot="trigger" let:selectedLabel>
-									<span
-										class="inline-flex h-input px-0.5 w-full outline-hidden bg-transparent truncate placeholder-gray-400 focus:outline-hidden"
-									>
-										{selectedLabel}
-									</span>
-									<ChevronDown className="size-3.5" strokeWidth="2.5" />
-								</svelte:fragment>
+								<Select
+									bind:value={statusFilter}
+									align="end"
+									items={[
+										{ value: 'all', label: $i18n.t('All') },
+										{ value: 'active', label: $i18n.t('Active') },
+										{ value: 'paused', label: $i18n.t('Paused') }
+									]}
+									onChange={() => {
+										page = 1;
+									}}
+									triggerClass="relative h-8 w-full flex items-center gap-0.5 px-1.5 py-1.5 bg-transparent rounded-xl text-[13px] font-normal text-gray-700 transition hover:text-gray-900 dark:text-gray-200 dark:hover:text-gray-100"
+								>
+									<svelte:fragment slot="trigger" let:selectedLabel>
+										<span
+											class="inline-flex h-input w-full outline-hidden bg-transparent truncate placeholder-gray-400 focus:outline-hidden"
+										>
+											{selectedLabel}
+										</span>
+										<ChevronDown className="size-3.5" strokeWidth="2.5" />
+									</svelte:fragment>
 
-								<svelte:fragment slot="item" let:item let:selected>
-									{item.label}
-									<div class="ml-auto {selected ? '' : 'invisible'}">
-										<Check />
+									<svelte:fragment slot="item" let:item let:selected>
+										{item.label}
+										<div class="ml-auto {selected ? '' : 'invisible'}">
+											<Check />
+										</div>
+									</svelte:fragment>
+								</Select>
+
+								<Dropdown align="end">
+									<Tooltip content={$i18n.t('Actions')}>
+										<button
+											class="flex h-8 items-center gap-1.5 rounded-xl bg-transparent px-1.5 text-[13px] font-normal text-gray-700 transition hover:text-gray-900 dark:text-gray-200 dark:hover:text-gray-100"
+											type="button"
+										>
+											<span>{$i18n.t('Actions')}</span>
+											<ChevronDown className="size-3" strokeWidth="2.5" />
+										</button>
+									</Tooltip>
+
+									<div slot="content">
+										<DropdownMenu className="w-[170px] shadow-sm">
+											<button
+												class="select-none flex h-[1.6875rem] w-full cursor-pointer items-center gap-2 rounded-xl bg-transparent px-2 text-[13px] hover:text-gray-900 dark:hover:text-gray-100"
+												type="button"
+												on:click={() => bulkToggleHandler(true)}
+											>
+												<CheckCircle className="size-3.5" />
+												{$i18n.t('Enable All')}
+											</button>
+											<button
+												class="select-none flex h-[1.6875rem] w-full cursor-pointer items-center gap-2 rounded-xl bg-transparent px-2 text-[13px] hover:text-gray-900 dark:hover:text-gray-100"
+												type="button"
+												on:click={() => bulkToggleHandler(false)}
+											>
+												<Minus className="size-3.5" />
+												{$i18n.t('Disable All')}
+											</button>
+										</DropdownMenu>
 									</div>
-								</svelte:fragment>
-							</Select>
-						</div>
-
-						<div class="flex-1"></div>
-
-						<Dropdown align="end">
-							<Tooltip content={$i18n.t('Actions')}>
-								<button
-									class="p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition"
-									type="button"
-									aria-label={$i18n.t('Actions')}
-								>
-									<EllipsisHorizontal className="size-4" />
-								</button>
-							</Tooltip>
-
-							<div slot="content">
-								<div
-									class="w-[170px] rounded-xl p-1 border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-850 dark:text-white shadow-sm"
-								>
-									<button
-										class="select-none flex w-full gap-2 items-center px-3 py-1.5 text-sm font-medium cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 rounded-md"
-										type="button"
-										on:click={() => bulkToggleHandler(true)}
-									>
-										<CheckCircle className="size-4" />
-										{$i18n.t('Enable All')}
-									</button>
-									<button
-										class="select-none flex w-full gap-2 items-center px-3 py-1.5 text-sm font-medium cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 rounded-md"
-										type="button"
-										on:click={() => bulkToggleHandler(false)}
-									>
-										<Minus className="size-4" />
-										{$i18n.t('Disable All')}
-									</button>
-								</div>
+								</Dropdown>
 							</div>
-						</Dropdown>
+						</div>
 					</div>
 
 					{#if automations === null || loading}
-						<div class="w-full h-full flex justify-center items-center my-16 mb-24">
+						<div class="flex min-h-[calc(100dvh-13rem)] w-full items-center justify-center">
 							<Spinner className="size-5" />
 						</div>
 					{:else if (automations ?? []).length === 0}
-						<div class="w-full h-full flex flex-col justify-center items-center my-16 mb-24">
+						<div
+							class="flex min-h-[calc(100dvh-13rem)] w-full flex-col items-center justify-center"
+						>
 							<div class="max-w-md text-center">
 								<div class="text-3xl mb-3">⚡</div>
-								<div class="text-lg font-medium mb-1">
+								<div class="text-lg font-normal mb-1">
 									{query ? $i18n.t('No results found') : $i18n.t('No automations found')}
 								</div>
 								<div class="text-gray-500 text-center text-xs">
@@ -431,10 +544,10 @@
 							</div>
 						</div>
 					{:else}
-						<div class="gap-2 grid my-2 px-3">
+						<div class="gap-y-0.5 grid my-1">
 							{#each automations as automation (automation.id)}
 								<a
-									class="flex space-x-4 text-left w-full px-3 py-2.5 dark:hover:bg-gray-850/50 hover:bg-gray-50 transition rounded-2xl"
+									class="flex space-x-4 text-left w-full px-3 py-2 bg-transparent hover:bg-gray-50/70 dark:hover:bg-gray-850/50 transition rounded-2xl"
 									href={`/automations/${automation.id}`}
 								>
 									<div class="flex-1">
@@ -461,7 +574,7 @@
 											}}
 										>
 											<button
-												class="self-center w-fit text-sm p-1.5 dark:text-gray-300 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 rounded-xl"
+												class="self-center w-fit text-sm p-1.5 text-gray-500 hover:text-gray-900 dark:text-gray-300 dark:hover:text-gray-100 rounded-xl"
 												type="button"
 											>
 												<EllipsisHorizontal className="size-5" />

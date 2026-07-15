@@ -63,12 +63,14 @@
 
 	import { WEBUI_BASE_URL, WEBUI_API_BASE_URL, PASTED_TEXT_CHARACTER_LIMIT } from '$lib/constants';
 	import { initiateOAuthRedirect } from '$lib/apis/configs';
+	import { matchKeybinding, Shortcut } from '$lib/shortcuts';
 
 	import { createNoteHandler } from '../notes/utils';
 	import { getSuggestionRenderer } from '../common/RichTextInput/suggestions';
 
 	import InputMenu from './MessageInput/InputMenu.svelte';
 	import VoiceRecording from './MessageInput/VoiceRecording.svelte';
+	import ModelSelector from './ModelSelector.svelte';
 
 	import ToolServersModal from './ToolServersModal.svelte';
 	import SkillsModal from './SkillsModal.svelte';
@@ -83,7 +85,7 @@
 	import GlobeAlt from '../icons/GlobeAlt.svelte';
 	import Photo from '../icons/Photo.svelte';
 	import Wrench from '../icons/Wrench.svelte';
-	import Keyframes from '../icons/Keyframes.svelte';
+	import Cube from '../icons/Cube.svelte';
 	import Sparkles from '../icons/Sparkles.svelte';
 
 	import InputVariablesModal from './MessageInput/InputVariablesModal.svelte';
@@ -113,6 +115,11 @@
 
 	export let createMessagePair: Function;
 	export let stopResponse: Function;
+	export let compactHandler: Function = () => {};
+	export let statusHandler: Function = () => {};
+	export let forkHandler: Function = () => {};
+	export let chatId = '';
+	export let contextUsage = null;
 
 	export let autoScroll = false;
 	export let generating = false;
@@ -131,6 +138,7 @@
 		(taskIds && taskIds.length > 0) ||
 		(history.currentId && history.messages[history.currentId]?.done != true) ||
 		generating;
+	$: canCompact = !!history?.currentId;
 
 	export let prompt = '';
 	export let files = [];
@@ -162,6 +170,8 @@
 	let inputVariableValues = {};
 
 	let showValvesModal = false;
+	let showStatusPanel = false;
+	let copiedStatusChatId = false;
 	let selectedValvesType = 'tool'; // 'tool' or 'function'
 	let selectedValvesItemId = null;
 	let integrationsMenuCloseOnOutsideClick = true;
@@ -362,6 +372,36 @@
 			if (cb) await cb(text);
 		}
 	};
+
+	export const showStatus = async () => {
+		showStatusPanel = true;
+		await tick();
+		document.getElementById('chat-input')?.focus();
+	};
+
+	const formatTokenCount = (value: number) => {
+		if (value >= 1_000_000) return `${trimNumber(value / 1_000_000)}m`;
+		if (value >= 1_000) return `${trimNumber(value / 1_000)}k`;
+		return String(value ?? 0);
+	};
+
+	const trimNumber = (value: number) =>
+		value >= 10 ? String(Math.round(value)) : value.toFixed(1).replace(/\.0$/, '');
+
+	const copyStatusChatId = async () => {
+		if (!chatId) return;
+		await navigator.clipboard.writeText(chatId);
+		copiedStatusChatId = true;
+		setTimeout(() => {
+			copiedStatusChatId = false;
+		}, 1600);
+	};
+
+	$: contextPercent = Math.max(0, Math.round(contextUsage?.percent ?? 0));
+	$: contextValue = contextUsage
+		? `${contextPercent}% ${formatTokenCount(contextUsage.estimated_tokens || contextUsage.tokens)}/${formatTokenCount(contextUsage.threshold)}`
+		: $i18n.t('unknown');
+	$: contextBarPercent = Math.min(contextPercent, 100);
 
 	const getCommand = () => {
 		const chatInput = document.getElementById('chat-input');
@@ -970,8 +1010,7 @@
 			shiftKey = true;
 		}
 
-		// Cmd/Ctrl+Shift+L to toggle dictation
-		if (e.key.toLowerCase() === 'l' && (e.metaKey || e.ctrlKey) && e.shiftKey) {
+		if (matchKeybinding(e) === Shortcut.TOGGLE_DICTATION) {
 			e.preventDefault();
 			if (recording) {
 				// Confirm and stop recording
@@ -1045,6 +1084,15 @@
 				char: '/',
 				render: getSuggestionRenderer(CommandSuggestionList, {
 					i18n,
+					canCompact: () => !!history?.currentId,
+					compactDisabled: () => isActive,
+					canStatus: () => !!history?.currentId,
+					canFork: () => !!history?.currentId,
+					forkDisabled: () => isActive,
+					contextUsage: () => contextUsage,
+					onCompact: compactHandler,
+					onStatus: statusHandler,
+					onFork: forkHandler,
 					onSelect: (e) => {
 						const { type, data } = e;
 
@@ -1232,12 +1280,12 @@
 />
 
 {#if loaded}
-	<div class="w-full font-primary">
+	<div class="w-full">
 		<div class=" mx-auto inset-x-0 bg-transparent flex justify-center">
 			<div
 				class="flex flex-col px-3 {($settings?.widescreenMode ?? null)
 					? 'max-w-full'
-					: 'max-w-6xl'} w-full"
+					: 'max-w-[52rem]'} w-full"
 			>
 				<div class="relative">
 					{#if autoScroll === false && history?.currentId}
@@ -1274,7 +1322,7 @@
 			<div
 				class="{($settings?.widescreenMode ?? null)
 					? 'max-w-full'
-					: 'max-w-6xl'} px-2.5 mx-auto inset-x-0"
+					: 'max-w-[52rem]'} px-2.5 mx-auto inset-x-0"
 			>
 				<div class="">
 					<input
@@ -1358,15 +1406,93 @@
 							</div>
 						{/if}
 
+						{#if showStatusPanel}
+							<div
+								class="mx-1 mb-1 rounded-2xl border border-gray-50 bg-white text-xs dark:border-gray-850 dark:bg-gray-900"
+							>
+								<div class="flex items-center justify-between px-3 py-1.5">
+									<div class="flex items-center gap-1.5 text-xs text-gray-700 dark:text-gray-300">
+										<span>Status</span>
+									</div>
+
+									<button
+										type="button"
+										class="text-xs text-gray-400 transition-colors hover:text-gray-600 dark:hover:text-gray-300"
+										on:click={() => {
+											showStatusPanel = false;
+										}}
+									>
+										Close
+									</button>
+								</div>
+
+								<div class="space-y-0.5 px-3 pb-2">
+									<div class="rounded-xl py-0.5 text-gray-600 dark:text-gray-400">
+										<div class="flex min-h-4 items-center gap-3">
+											<span class="min-w-0 flex-1 truncate">Context usage</span>
+											<span
+												class="shrink-0 font-mono text-[0.625rem] text-gray-400 dark:text-gray-600"
+											>
+												{contextValue}
+											</span>
+										</div>
+										<div
+											class="mt-1.5 h-0.5 overflow-hidden rounded-full bg-gray-100 dark:bg-white/8"
+										>
+											<div
+												class="h-full rounded-full bg-gray-300 dark:bg-white/20"
+												style={`width: ${contextBarPercent}%`}
+											></div>
+										</div>
+									</div>
+
+									{#if messageQueue.length}
+										<div class="flex min-h-5 items-center gap-3 text-gray-600 dark:text-gray-400">
+											<span class="min-w-0 flex-1 truncate">Queued messages</span>
+											<span class="font-mono text-[0.625rem] text-gray-400 dark:text-gray-600">
+												{messageQueue.length}
+											</span>
+										</div>
+									{/if}
+
+									{#if chatTasks.length}
+										<div class="flex min-h-5 items-center gap-3 text-gray-600 dark:text-gray-400">
+											<span class="min-w-0 flex-1 truncate">Tasks</span>
+											<span class="font-mono text-[0.625rem] text-gray-400 dark:text-gray-600">
+												{chatTasks.length}
+											</span>
+										</div>
+									{/if}
+
+									<div class="flex min-h-5 items-center gap-3 text-gray-600 dark:text-gray-400">
+										<span class="min-w-0 flex-1 truncate">Chat ID</span>
+										{#if chatId}
+											<button
+												type="button"
+												class="min-w-0 max-w-[18rem] truncate font-mono text-[0.625rem] text-gray-400 underline-offset-2 transition-colors duration-75 hover:text-gray-700 hover:underline dark:text-gray-600 dark:hover:text-gray-200"
+												on:click={copyStatusChatId}
+											>
+												{copiedStatusChatId ? $i18n.t('Copied') : chatId}
+											</button>
+										{:else}
+											<span class="font-mono text-[0.625rem] text-gray-400 dark:text-gray-600">
+												none
+											</span>
+										{/if}
+									</div>
+								</div>
+							</div>
+						{/if}
+
 						<div
 							id="message-input-container"
 							class="flex-1 flex flex-col relative w-full shadow-lg rounded-3xl border {$temporaryChatEnabled
 								? 'border-dashed border-gray-100 dark:border-gray-800 hover:border-gray-200 focus-within:border-gray-200 hover:dark:border-gray-700 focus-within:dark:border-gray-700'
-								: ' border-gray-100/30 dark:border-gray-850/30 hover:border-gray-200 focus-within:border-gray-100 hover:dark:border-gray-800 focus-within:dark:border-gray-800'}  transition px-1 bg-white/5 dark:bg-gray-500/5 backdrop-blur-sm dark:text-gray-100"
+								: ' border-gray-100/30 dark:border-gray-850/30 hover:border-gray-200 focus-within:border-gray-100 hover:dark:border-gray-800 focus-within:dark:border-gray-800'}  transition px-0.5 bg-white/5 dark:bg-gray-500/5 backdrop-blur-sm dark:text-gray-100"
 							dir={$settings?.chatDirection ?? 'auto'}
 						>
 							{#if atSelectedModel !== undefined}
-								<div class="px-3 pt-3 text-left w-full flex flex-col z-10">
+								<div class="px-2.5 pt-2.5 text-left w-full flex flex-col z-10">
 									<div class="flex items-center justify-between w-full">
 										<div class="pl-[1px] flex items-center gap-2 text-sm dark:text-gray-500">
 											<img
@@ -1394,7 +1520,7 @@
 
 							{#if files.length > 0}
 								<div
-									class="mx-2 mt-2.5 pb-1.5 flex items-center flex-wrap gap-2"
+									class="mx-2 mt-2 pb-1 flex items-center flex-wrap gap-1.5"
 									dir={$settings?.chatDirection ?? 'auto'}
 								>
 									{#each files as file, fileIdx}
@@ -1487,13 +1613,13 @@
 								</div>
 							{/if}
 
-							<div class="px-2.5">
+							<div class="px-2">
 								<div
-									class="scrollbar-hidden rtl:text-right ltr:text-left bg-transparent dark:text-gray-100 outline-hidden w-full pb-1 px-1 resize-none h-fit max-h-96 overflow-auto {files.length ===
+									class="scrollbar-hidden rtl:text-right ltr:text-left bg-transparent dark:text-gray-100 outline-hidden w-full pb-0.5 px-1 resize-none h-fit max-h-96 overflow-auto {files.length ===
 									0
 										? atSelectedModel !== undefined
-											? 'pt-1.5'
-											: 'pt-2.5'
+											? 'pt-1'
+											: 'pt-2'
 										: ''}"
 									id="chat-input-container"
 								>
@@ -1683,7 +1809,7 @@
 								</div>
 							</div>
 
-							<div class=" flex justify-between mt-0.5 mb-2.5 mx-0.5 max-w-full" dir="ltr">
+							<div class=" flex justify-between mt-0.5 mb-2 mx-0.5 max-w-full" dir="ltr">
 								<div class="ml-1 self-end flex items-center flex-1 min-w-0">
 									<InputMenu
 										bind:files
@@ -1740,10 +1866,10 @@
 										<button
 											type="button"
 											id="input-menu-button"
-											class="bg-transparent hover:bg-gray-100 text-gray-700 dark:text-white dark:hover:bg-gray-800 rounded-full size-8 flex justify-center items-center outline-hidden focus:outline-hidden shrink-0"
+											class="bg-transparent hover:bg-gray-100 text-gray-700 dark:text-white dark:hover:bg-gray-800 rounded-full size-[1.875rem] flex justify-center items-center outline-hidden focus:outline-hidden shrink-0"
 											aria-label={$i18n.t('More')}
 										>
-											<PlusAlt className="size-5.5" />
+											<PlusAlt className="size-5" />
 										</button>
 									</InputMenu>
 
@@ -1786,7 +1912,7 @@
 												<button
 													type="button"
 													id="integration-menu-button"
-													class="bg-transparent hover:bg-gray-100 text-gray-700 dark:text-white dark:hover:bg-gray-800 rounded-full size-8 flex justify-center items-center outline-hidden focus:outline-hidden shrink-0"
+													class="bg-transparent hover:bg-gray-100 text-gray-700 dark:text-white dark:hover:bg-gray-800 rounded-full size-[1.875rem] flex justify-center items-center outline-hidden focus:outline-hidden shrink-0"
 													aria-label={$i18n.t('Integrations')}
 												>
 													<Component className="size-4.5" strokeWidth="1.5" />
@@ -1800,7 +1926,7 @@
 													<button
 														type="button"
 														id="model-valves-button"
-														class="bg-transparent hover:bg-gray-100 text-gray-700 dark:text-white dark:hover:bg-gray-800 rounded-full size-8 flex justify-center items-center outline-hidden focus:outline-hidden"
+														class="bg-transparent hover:bg-gray-100 text-gray-700 dark:text-white dark:hover:bg-gray-800 rounded-full size-[1.875rem] flex justify-center items-center outline-hidden focus:outline-hidden"
 														on:click={() => {
 															selectedValvesType = 'function';
 															selectedValvesItemId = selectedModelIds[0]?.split('.')[0];
@@ -1851,7 +1977,7 @@
 															showSkills = !showSkills;
 														}}
 													>
-														<Keyframes className="size-4" strokeWidth="1.75" />
+														<Cube className="size-4" strokeWidth="1.75" />
 
 														<span class="text-sm">
 															{(selectedSkillIds ?? []).length}
@@ -1881,7 +2007,7 @@
 																}
 															}}
 															type="button"
-															class="group p-[7px] flex gap-1.5 items-center text-sm rounded-full transition-colors duration-300 focus:outline-hidden max-w-full overflow-hidden {selectedFilterIds.includes(
+															class="group p-[6px] flex gap-1.5 items-center text-sm rounded-full transition-colors duration-300 focus:outline-hidden max-w-full overflow-hidden {selectedFilterIds.includes(
 																filterId
 															)
 																? 'text-sky-500 dark:text-sky-300 bg-sky-50 hover:bg-sky-100 dark:bg-sky-400/10 dark:hover:bg-sky-600/10 border border-sky-200/40 dark:border-sky-500/20'
@@ -1925,7 +2051,7 @@
 													<button
 														on:click|preventDefault={() => (webSearchEnabled = !webSearchEnabled)}
 														type="button"
-														class="group p-[7px] flex gap-1.5 items-center text-sm rounded-full transition-colors duration-300 focus:outline-hidden max-w-full overflow-hidden {webSearchEnabled ||
+														class="group p-[6px] flex gap-1.5 items-center text-sm rounded-full transition-colors duration-300 focus:outline-hidden max-w-full overflow-hidden {webSearchEnabled ||
 														($settings?.webSearch ?? false) === 'always'
 															? ' text-sky-500 dark:text-sky-300 bg-sky-50 hover:bg-sky-100 dark:bg-sky-400/10 dark:hover:bg-sky-600/10 border border-sky-200/40 dark:border-sky-500/20'
 															: 'bg-transparent text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 '}"
@@ -1944,7 +2070,7 @@
 														on:click|preventDefault={() =>
 															(imageGenerationEnabled = !imageGenerationEnabled)}
 														type="button"
-														class="group p-[7px] flex gap-1.5 items-center text-sm rounded-full transition-colors duration-300 focus:outline-hidden max-w-full overflow-hidden {imageGenerationEnabled
+														class="group p-[6px] flex gap-1.5 items-center text-sm rounded-full transition-colors duration-300 focus:outline-hidden max-w-full overflow-hidden {imageGenerationEnabled
 															? ' text-sky-500 dark:text-sky-300 bg-sky-50 hover:bg-sky-100 dark:bg-sky-400/10 dark:hover:bg-sky-700/10 border border-sky-200/40 dark:border-sky-500/20'
 															: 'bg-transparent text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 '}"
 													>
@@ -1966,7 +2092,7 @@
 														on:click|preventDefault={() =>
 															(codeInterpreterEnabled = !codeInterpreterEnabled)}
 														type="button"
-														class=" group p-[7px] flex gap-1.5 items-center text-sm transition-colors duration-300 max-w-full overflow-hidden {codeInterpreterEnabled
+														class=" group p-[6px] flex gap-1.5 items-center text-sm transition-colors duration-300 max-w-full overflow-hidden {codeInterpreterEnabled
 															? ' text-sky-500 dark:text-sky-300 bg-sky-50 hover:bg-sky-100 dark:bg-sky-400/10 dark:hover:bg-sky-700/10 border border-sky-200/40 dark:border-sky-500/20'
 															: 'bg-transparent text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 '} {($settings?.highContrastMode ??
 														false)
@@ -1997,16 +2123,36 @@
 													</button>
 												</Tooltip>
 											{/each}
+
+											{#if !history?.currentId || history.messages[history.currentId]?.done == true}
+												<!-- Terminal Server Selector -->
+												{@const hasDirectToolServerAccess =
+													$_user?.role === 'admin' ||
+													($_user?.permissions?.features?.direct_tool_servers ?? true)}
+												{#if terminalCapableModels.length > 0 && (($terminalServers ?? []).some((t) => t.id) || (hasDirectToolServerAccess && (($terminalServers ?? []).some((t) => !t.id) || ($settings?.terminalServers ?? []).some((s) => s.url))))}
+													<TerminalMenu bind:show={showTerminalMenu} />
+												{/if}
+											{/if}
 										</div>
 									</div>
 								</div>
 
 								<div class="self-end flex space-x-1 mr-1 shrink-0 gap-[0.5px]">
+									<div class="flex min-w-0 max-w-[10rem] items-center sm:max-w-[13rem]">
+										<ModelSelector
+											bind:selectedModels
+											showSetDefault={!history?.currentId}
+											placement="auto"
+											align="end"
+											triggerClassName="items-center gap-1.5 rounded-lg pl-2 pr-1.5 py-1 text-[13px] font-normal text-gray-600 transition-colors duration-100 hover:bg-gray-50/40 hover:text-gray-700 dark:text-gray-300 dark:hover:bg-gray-800/40 dark:hover:text-gray-200"
+										/>
+									</div>
+
 									{#if isActive && prompt === '' && files.length === 0}
 										<div class=" flex items-center">
 											<Tooltip content={$i18n.t('Stop')}>
 												<button
-													class="bg-white hover:bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-white dark:hover:bg-gray-800 transition rounded-full p-1.5"
+													class="bg-white hover:bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-white dark:hover:bg-gray-800 transition rounded-full p-[5px]"
 													on:click={() => {
 														stopResponse();
 													}}
@@ -2032,7 +2178,7 @@
 											<Tooltip content={$i18n.t('Create note')} className=" flex items-center">
 												<button
 													id="create-note-button"
-													class=" text-gray-500 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-200 transition rounded-full p-1.5 -mr-1 self-center"
+													class=" text-gray-500 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-200 transition rounded-full p-[5px] -mr-1 self-center"
 													type="button"
 													disabled={prompt === '' && files.length === 0}
 													on:click={() => {
@@ -2045,20 +2191,12 @@
 										{/if}
 
 										{#if !history?.currentId || history.messages[history.currentId]?.done == true}
-											<!-- Terminal Server Selector -->
-											{@const hasDirectToolServerAccess =
-												$_user?.role === 'admin' ||
-												($_user?.permissions?.features?.direct_tool_servers ?? true)}
-											{#if terminalCapableModels.length > 0 && (($terminalServers ?? []).some((t) => t.id) || (hasDirectToolServerAccess && (($terminalServers ?? []).some((t) => !t.id) || ($settings?.terminalServers ?? []).some((s) => s.url))))}
-												<TerminalMenu bind:show={showTerminalMenu} />
-											{/if}
-
 											{#if $_user?.role === 'admin' || ($_user?.permissions?.chat?.stt ?? true)}
 												<!-- {$i18n.t('Record voice')} -->
 												<Tooltip content={$i18n.t('Dictate')}>
 													<button
 														id="voice-input-button"
-														class=" text-gray-600 dark:text-gray-300 hover:text-gray-700 dark:hover:text-gray-200 transition rounded-full p-1.5 self-center mr-0.5"
+														class=" text-gray-600 dark:text-gray-300 hover:text-gray-700 dark:hover:text-gray-200 transition rounded-full p-[5px] self-center mr-0.5"
 														type="button"
 														on:click={async () => {
 															try {
@@ -2109,7 +2247,7 @@
 												<!-- {$i18n.t('Call')} -->
 												<Tooltip content={$i18n.t('Voice mode')}>
 													<button
-														class=" bg-black text-white hover:bg-gray-900 dark:bg-white dark:text-black dark:hover:bg-gray-100 transition rounded-full p-1.5 self-center"
+														class=" bg-black text-white hover:bg-gray-900 dark:bg-white dark:text-black dark:hover:bg-gray-100 transition rounded-full p-[5px] self-center"
 														type="button"
 														on:click={async () => {
 															if (selectedModels.length > 1) {
@@ -2178,7 +2316,7 @@
 														id="send-message-button"
 														class="{!(prompt === '' && files.length === 0) || uploadPending
 															? 'bg-black text-white hover:bg-gray-900 dark:bg-white dark:text-black dark:hover:bg-gray-100 '
-															: 'text-white bg-gray-200 dark:text-gray-900 dark:bg-gray-700 disabled'} transition rounded-full p-1.5 self-center"
+															: 'text-white bg-gray-200 dark:text-gray-900 dark:bg-gray-700 disabled'} transition rounded-full p-[5px] self-center"
 														type="submit"
 														disabled={(prompt === '' && files.length === 0) || uploadPending}
 													>

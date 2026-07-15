@@ -1,10 +1,12 @@
 <script lang="ts">
 	import { onMount, tick, getContext } from 'svelte';
+	import type { Writable } from 'svelte/store';
+	import type { i18n as i18nType } from 'i18next';
 
 	import Textarea from '$lib/components/common/Textarea.svelte';
 	import { toast } from 'svelte-sonner';
 	import Tooltip from '$lib/components/common/Tooltip.svelte';
-	import LockClosed from '$lib/components/icons/LockClosed.svelte';
+	import AccessButton from '$lib/components/common/AccessButton.svelte';
 	import Clipboard from '$lib/components/icons/Clipboard.svelte';
 	import Check from '$lib/components/icons/Check.svelte';
 	import AccessControlModal from '../common/AccessControlModal.svelte';
@@ -31,11 +33,13 @@
 
 	export let onSubmit: Function;
 	export let edit = false;
-	export let prompt = null;
+	export let prompt: any = null;
 	export let clone = false;
 	export let disabled = false;
+	export let modal = false;
+	export let onCancel: Function = () => {};
 
-	const i18n = getContext('i18n');
+	const i18n = getContext<Writable<i18nType>>('i18n');
 
 	let loading = false;
 	let showEditModal = false;
@@ -302,15 +306,15 @@
 
 <!-- Edit Modal -->
 <Modal size="lg" bind:show={showEditModal}>
-	<div class="px-5 pt-4 pb-5">
-		<div class="flex justify-between items-center mb-2">
-			<div class="text-lg font-medium">{$i18n.t('Edit Prompt')}</div>
+	<div class="px-4 pt-3 pb-4">
+		<div class="flex justify-between items-center mb-2 dark:text-gray-100">
+			<div class="text-sm font-medium">{$i18n.t('Edit Prompt')}</div>
 			<button
-				class="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg"
+				class="rounded-lg p-1 text-gray-500 transition hover:bg-gray-50 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-200"
 				aria-label={$i18n.t('Close')}
 				on:click={() => (showEditModal = false)}
 			>
-				<XMark className="size-5" />
+				<XMark className="size-4" />
 			</button>
 		</div>
 
@@ -363,7 +367,7 @@
 						type="submit"
 						disabled={loading}
 					>
-						<div class="font-medium">{$i18n.t('Save')}</div>
+						<div class="font-normal">{$i18n.t('Save')}</div>
 						{#if loading}
 							<div class="ml-1.5">
 								<Spinner />
@@ -406,19 +410,13 @@
 				<div class="flex items-center gap-2 shrink-0 justify-end">
 					{#if !disabled}
 						<button
-							class="px-4 py-1 text-sm font-medium bg-black text-white dark:bg-white dark:text-black rounded-full hover:opacity-90 transition shadow-xs"
+							class="px-4 py-1 text-sm font-normal bg-black text-white dark:bg-white dark:text-black rounded-full hover:opacity-90 transition shadow-xs"
 							on:click={() => (showEditModal = true)}
 						>
 							{$i18n.t('Edit')}
 						</button>
 
-						<button
-							class="bg-gray-50 hover:bg-gray-100 text-black dark:bg-gray-850 dark:hover:bg-gray-800 dark:text-white transition px-2.5 py-1 rounded-full flex gap-1.5 items-center text-sm border border-gray-100 dark:border-gray-800"
-							on:click={() => (showAccessControlModal = true)}
-						>
-							<LockClosed strokeWidth="2.5" className="size-3.5" />
-							{$i18n.t('Access')}
-						</button>
+							<AccessButton on:click={() => (showAccessControlModal = true)} />
 					{:else}
 						<span class="text-xs text-gray-500 bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded-full"
 							>{$i18n.t('Read Only')}</span
@@ -533,9 +531,28 @@
 	</div>
 {:else}
 	<!-- Create mode: Form -->
-	<div class="w-full max-h-full flex justify-center">
-		<form class="flex flex-col w-full mb-10" on:submit|preventDefault={submitHandler}>
-			<div class="mb-2">
+	<div class="w-full max-h-full {modal ? 'h-full flex flex-col' : ''}">
+		{#if modal}
+			<div class="flex justify-between items-center dark:text-gray-100 px-5 pt-4 pb-2">
+				<h3 class="text-base font-normal">{$i18n.t('Create Prompt')}</h3>
+				<button
+					class="self-center shrink-0 ml-2"
+					aria-label={$i18n.t('Close')}
+					type="button"
+					on:click={() => {
+						onCancel();
+					}}
+				>
+					<XMark className="size-5" />
+				</button>
+			</div>
+		{/if}
+
+		<form
+			class="flex flex-col w-full {modal ? 'px-5 pb-3 flex-1 min-h-0' : 'mb-10'}"
+			on:submit|preventDefault={submitHandler}
+		>
+			<div class="mb-2 shrink-0">
 				<Tooltip
 					content={`${$i18n.t('Only alphanumeric characters and hyphens are allowed')} - ${$i18n.t('Activate this command by typing "/{{COMMAND}}" to chat input.', { COMMAND: command })}`}
 					placement="bottom-start"
@@ -543,22 +560,15 @@
 					<div class="flex flex-col w-full">
 						<div class="flex items-center">
 							<input
-								class="text-2xl w-full bg-transparent outline-hidden"
+								class="{modal ? 'text-base' : 'text-2xl'} w-full bg-transparent outline-hidden"
 								placeholder={$i18n.t('Name')}
 								bind:value={name}
 								required
 							/>
 							<div class="self-center shrink-0">
-								<button
-									class="bg-gray-50 hover:bg-gray-100 text-black dark:bg-gray-850 dark:hover:bg-gray-800 dark:text-white transition px-2 py-1 rounded-full flex gap-1 items-center"
-									type="button"
-									on:click={() => (showAccessControlModal = true)}
-								>
-									<LockClosed strokeWidth="2.5" className="size-3.5" />
-									<div class="text-sm font-medium shrink-0">{$i18n.t('Access')}</div>
-								</button>
+								<AccessButton on:click={() => (showAccessControlModal = true)} />
 							</div>
-						</div>
+							</div>
 						<div class="flex gap-0.5 items-center text-xs text-gray-500">
 							<div>/</div>
 							<input
@@ -586,19 +596,28 @@
 				</Tooltip>
 			</div>
 
-			<div class="my-2">
+			<div class={modal ? 'my-2 flex-1 min-h-0 flex flex-col' : 'my-2'}>
 				<div class="text-gray-500 text-xs">{$i18n.t('Prompt Content')}</div>
-				<div class="mt-1">
-					<Textarea
-						className="text-sm w-full bg-transparent outline-hidden overflow-y-hidden resize-none"
-						placeholder={$i18n.t('Write a summary in 50 words that summarizes {{topic}}.')}
-						bind:value={content}
-						rows={6}
-						required
-					/>
+				<div class={modal ? 'mt-1 flex-1 min-h-0 flex flex-col' : 'mt-1'}>
+					{#if modal}
+						<textarea
+							class="text-sm w-full flex-1 min-h-0 bg-transparent outline-hidden resize-none"
+							placeholder={$i18n.t('Write a summary in 50 words that summarizes {{topic}}.')}
+							bind:value={content}
+							required
+						></textarea>
+					{:else}
+						<Textarea
+							className="text-sm w-full bg-transparent outline-hidden overflow-y-hidden resize-none"
+							placeholder={$i18n.t('Write a summary in 50 words that summarizes {{topic}}.')}
+							bind:value={content}
+							rows={6}
+							required
+						/>
+					{/if}
 					<div class="text-xs text-gray-400 dark:text-gray-500">
 						ⓘ {$i18n.t('Use')}
-						<span class="font-medium text-gray-600 dark:text-gray-300"
+						<span class="font-normal text-gray-600 dark:text-gray-300"
 							>{'{{'}{$i18n.t('variable')}{'}}'}</span
 						>
 						{$i18n.t('for placeholders')}
@@ -606,13 +625,27 @@
 				</div>
 			</div>
 
-			<div class="my-4 flex justify-end pb-20">
+			<div class="flex justify-end {modal ? 'pt-3 gap-2 shrink-0' : 'my-4 pb-20'}">
+				{#if modal}
+					<button
+						class="px-3 py-1 text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-200 transition"
+						type="button"
+						on:click={() => {
+							onCancel();
+						}}
+					>
+						{$i18n.t('Cancel')}
+					</button>
+				{/if}
+
 				<button
-					class="text-sm w-full lg:w-fit px-4 py-2 transition rounded-xl bg-black hover:bg-gray-900 text-white dark:bg-white dark:hover:bg-gray-100 dark:text-black flex w-full justify-center"
+					class="{modal
+						? 'px-3.5 py-1.5 text-sm rounded-full w-fit'
+						: 'text-sm w-full lg:w-fit px-4 py-2 rounded-xl'} transition bg-black hover:bg-gray-900 text-white dark:bg-white dark:hover:bg-gray-100 dark:text-black flex justify-center"
 					type="submit"
 					disabled={loading}
 				>
-					<div class="font-medium">{$i18n.t('Save & Create')}</div>
+					<div class="font-normal">{$i18n.t('Save & Create')}</div>
 					{#if loading}
 						<div class="ml-1.5">
 							<Spinner />

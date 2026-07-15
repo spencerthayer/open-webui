@@ -80,7 +80,7 @@
 
 	import Calendar from '../icons/Calendar.svelte';
 	import Users from '../icons/Users.svelte';
-	import LockClosed from '../icons/LockClosed.svelte';
+	import AccessButton from '../common/AccessButton.svelte';
 
 	import Image from '../common/Image.svelte';
 	import FileItem from '../common/FileItem.svelte';
@@ -257,24 +257,23 @@
 	const generateTitleHandler = async () => {
 		const content = note.data.content.md;
 		const DEFAULT_TITLE_GENERATION_PROMPT_TEMPLATE = `### Task:
-Generate a concise, 3-5 word title with an emoji summarizing the content in the content's primary language.
+Generate a concise title summarizing the content in the content's primary language.
 ### Guidelines:
 - The title should clearly represent the main theme or subject of the content.
-- Use emojis that enhance understanding of the topic, but avoid quotation marks or special formatting.
+- Keep it short: 2-4 words is best.
+- Do not use emojis, quotation marks, or special formatting.
 - Write the title in the content's primary language.
-- Prioritize accuracy over excessive creativity; keep it clear and simple.
+- Prioritize accuracy over creativity.
 - Your entire response must consist solely of the JSON object, without any introductory or concluding text.
 - The output must be a single, raw JSON object, without any markdown code fences or other encapsulating text.
 - Ensure no conversational text, affirmations, or explanations precede or follow the raw JSON output, as this will cause direct parsing failure.
 ### Output:
 JSON format: { "title": "your concise title here" }
 ### Examples:
-- { "title": "📉 Stock Market Trends" },
-- { "title": "🍪 Perfect Chocolate Chip Recipe" },
-- { "title": "Evolution of Music Streaming" },
-- { "title": "Remote Work Productivity Tips" },
-- { "title": "Artificial Intelligence in Healthcare" },
-- { "title": "🎮 Video Game Development Insights" }
+- { "title": "Stock Trends" },
+- { "title": "Chocolate Chip Cookies" },
+- { "title": "Music Streaming" },
+- { "title": "Remote Work" }
 ### Content:
 <content>
 ${content}
@@ -907,13 +906,13 @@ Provide the enhanced notes in markdown format. Use markdown syntax for headings,
 	}}
 >
 	<div class=" text-sm text-gray-500">
-		{$i18n.t('This will delete')} <span class="  font-semibold">{note.title}</span>.
+		{$i18n.t('This will delete')} <span class="  font-normal">{note.title}</span>.
 	</div>
 </DeleteConfirmDialog>
 
 <PaneGroup direction="horizontal" class="w-full h-full">
 	<Pane defaultSize={70} minSize={30} class="h-full flex flex-col w-full relative">
-		<div class="relative flex-1 w-full h-full flex justify-center pt-[11px]" id="note-editor">
+		<div class="relative flex-1 w-full h-full flex justify-center pt-2" id="note-editor">
 			{#if loading}
 				<div class=" absolute top-0 bottom-0 left-0 right-0 flex">
 					<div class="m-auto">
@@ -922,34 +921,32 @@ Provide the enhanced notes in markdown format. Use markdown syntax for headings,
 				</div>
 			{:else}
 				<div class=" w-full flex flex-col {loading ? 'opacity-20' : ''}">
-					<div class="shrink-0 w-full flex justify-between items-center px-3.5 mb-1.5">
+					<div class="shrink-0 w-full flex justify-between items-center px-2.5 mb-0.5">
 						<div class="w-full min-w-0 flex items-center">
 							{#if $mobile}
-								<div
-									class="{$showSidebar
-										? 'md:hidden pl-0.5'
-										: ''} flex flex-none items-center pr-1 -translate-x-1"
+								<Tooltip
+									content={$showSidebar ? $i18n.t('Close Sidebar') : $i18n.t('Open Sidebar')}
 								>
-									<Tooltip
-										content={$showSidebar ? $i18n.t('Close Sidebar') : $i18n.t('Open Sidebar')}
+									<button
+										id="sidebar-toggle-button"
+										class=" cursor-pointer flex rounded-lg hover:bg-gray-100 dark:hover:bg-gray-850 transition cursor-"
+										aria-label={$showSidebar ? $i18n.t('Close Sidebar') : $i18n.t('Open Sidebar')}
+										type="button"
+										on:click={() => {
+											showSidebar.set(!$showSidebar);
+										}}
 									>
-										<button
-											id="sidebar-toggle-button"
-											class=" cursor-pointer flex rounded-lg hover:bg-gray-100 dark:hover:bg-gray-850 transition cursor-"
-											on:click={() => {
-												showSidebar.set(!$showSidebar);
-											}}
-										>
-											<div class=" self-center p-1.5">
-												<Sidebar />
-											</div>
-										</button>
-									</Tooltip>
-								</div>
+										<div class=" self-center p-1.5">
+											<Sidebar className="size-4" />
+										</div>
+									</button>
+								</Tooltip>
 							{/if}
 
 							<input
-								class="w-full text-2xl font-medium bg-transparent outline-hidden"
+								class="w-full text-sm font-normal bg-transparent outline-hidden {$mobile
+									? 'ml-1'
+									: ''}"
 								type="text"
 								bind:value={note.title}
 								placeholder={titleGenerating ? $i18n.t('Generating...') : $i18n.t('Title')}
@@ -999,7 +996,7 @@ Provide the enhanced notes in markdown format. Use markdown syntax for headings,
 								</div>
 							{/if}
 
-							<div class="flex items-center gap-0.5 shrink-0 translate-x-1">
+							<div class="flex items-center gap-0.5 shrink-0">
 								{#if note?.write_access}
 									{#if editor}
 										<div>
@@ -1110,16 +1107,12 @@ Provide the enhanced notes in markdown format. Use markdown syntax for headings,
 								</NoteMenu>
 
 								{#if note?.write_access}
-									<button
-										class="shrink-0 bg-gray-50 hover:bg-gray-100 text-black dark:bg-gray-850 dark:hover:bg-gray-800 dark:text-white transition px-2.5 py-1 rounded-full flex gap-1.5 items-center text-sm"
+									<AccessButton
 										on:click={() => {
 											showAccessControlModal = true;
 										}}
 										disabled={note?.user_id !== $user?.id && $user?.role !== 'admin'}
-									>
-										<LockClosed strokeWidth="2.5" className="size-3.5" />
-										{$i18n.t('Access')}
-									</button>
+									/>
 								{:else}
 									<div class="shrink-0 text-xs text-gray-500 px-2 py-1">
 										{$i18n.t('Read-Only Access')}
@@ -1129,7 +1122,7 @@ Provide the enhanced notes in markdown format. Use markdown syntax for headings,
 						</div>
 					</div>
 
-					<div class="  px-2.5">
+					<div class="  px-1.5">
 						<div
 							class=" flex w-full bg-transparent overflow-x-auto scrollbar-none"
 							on:wheel={(e) => {
@@ -1140,7 +1133,7 @@ Provide the enhanced notes in markdown format. Use markdown syntax for headings,
 							}}
 						>
 							<div
-								class="flex gap-0.5 items-center text-xs font-medium text-gray-500 dark:text-gray-500 w-fit"
+								class="flex gap-0.5 items-center text-xs font-normal text-gray-500 dark:text-gray-500 w-fit"
 							>
 								<button class=" flex items-center gap-1 w-fit py-1 px-1.5 rounded-lg min-w-fit">
 									<!-- check for same date, yesterday, last week, and other -->
@@ -1185,7 +1178,7 @@ Provide the enhanced notes in markdown format. Use markdown syntax for headings,
 					</div>
 
 					<div
-						class=" flex-1 w-full h-full overflow-auto px-3.5 relative"
+						class=" flex-1 w-full h-full overflow-auto px-2.5 relative"
 						id="note-content-container"
 					>
 						{#if editing}

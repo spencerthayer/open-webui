@@ -17,7 +17,6 @@
 
 	import {
 		chatId,
-		chats,
 		config,
 		type Model,
 		models,
@@ -31,7 +30,6 @@
 		audioQueue,
 		showControls,
 		showCallOverlay,
-		currentChatPage,
 		temporaryChatEnabled,
 		mobile,
 		chatTitle,
@@ -43,7 +41,6 @@
 		terminalServers,
 		functions,
 		selectedFolder,
-		pinnedChats,
 		showEmbeds,
 		selectedTerminalId,
 		showFileNavPath,
@@ -51,6 +48,7 @@
 		chatRequestQueues,
 		desktopEvent
 	} from '$lib/stores';
+	import { refreshChatList } from '$lib/stores/chat-list';
 
 	import { WEBUI_API_BASE_URL } from '$lib/constants';
 
@@ -72,12 +70,12 @@
 
 	import {
 		archiveChatById,
+		cloneChatById,
+		compactChatById,
 		createNewChat,
 		deleteChatById,
 		getAllTags,
 		getChatById,
-		getChatList,
-		getPinnedChatList,
 		getTagsById,
 		updateChatById,
 		updateChatFolderIdById
@@ -113,6 +111,7 @@
 	import FilesOverlay from './MessageInput/FilesOverlay.svelte';
 	import NotificationToast from '../NotificationToast.svelte';
 	import Spinner from '../common/Spinner.svelte';
+	import { isEmbedWindow } from '../common/FullHeightIframe.svelte';
 	import Tooltip from '../common/Tooltip.svelte';
 	import Sidebar from '../icons/Sidebar.svelte';
 	import Image from '../common/Image.svelte';
@@ -153,6 +152,94 @@
 	} else {
 		selectedModelIds = selectedModels;
 	}
+	let serverContextUsage = null;
+	let contextUsage = null;
+
+	const estimateTokens = (value) => {
+		if (value === null || value === undefined || value === '') {
+			return 0;
+		}
+		if (typeof value !== 'string') {
+			try {
+				value = JSON.stringify(value);
+			} catch {
+				value = String(value);
+			}
+		}
+		return Math.max(1, Math.floor(value.length / 4));
+	};
+
+	const estimateMessagesTokens = (messages) =>
+		messages.reduce((total, message) => {
+			let next = total + 4 + estimateTokens(message.content);
+			next += estimateTokens(message.output);
+			next += estimateTokens(message.tool_calls);
+			next += estimateTokens(message.files);
+			return next;
+		}, 0);
+
+	const getContextThreshold = () => {
+		const chatThreshold = Number(params?.compact_token_threshold);
+		if (Number.isFinite(chatThreshold) && chatThreshold > 0) {
+			return chatThreshold;
+		}
+
+		const modelId = atSelectedModel?.id ?? selectedModels.find((id) => id);
+		const model = $models.find((item) => item.id === modelId);
+		const threshold = Number(model?.info?.params?.compact_token_threshold);
+		return Number.isFinite(threshold) && threshold > 0 ? threshold : 80000;
+	};
+
+	const getContextUsage = () => {
+		if (!history?.currentId) {
+			return null;
+		}
+
+		const messages = createMessagesList(history, history.currentId);
+		const threshold = getContextThreshold();
+		const systemTokens = estimateTokens($settings?.system ?? '');
+		let estimatedTokens = systemTokens;
+		let hasUsageCheckpoint = false;
+		let summary = '';
+		let startIdx = 0;
+
+		for (let idx = 0; idx < messages.length; idx += 1) {
+			const value = messages[idx]?.contextSummary ?? messages[idx]?.context_summary;
+			if (typeof value === 'string' && value.trim()) {
+				summary = value;
+				startIdx = idx;
+			}
+		}
+
+		const activeMessages = messages.slice(startIdx);
+
+		for (let idx = activeMessages.length - 1; idx >= 0; idx -= 1) {
+			const usage = activeMessages[idx]?.usage ?? activeMessages[idx]?.info?.usage;
+			const inputTokens = usage?.input_tokens ?? usage?.prompt_tokens;
+			if (inputTokens) {
+				hasUsageCheckpoint = true;
+				estimatedTokens =
+					Number(inputTokens || 0) +
+					Number(usage.output_tokens ?? usage.completion_tokens ?? 0) +
+					estimateMessagesTokens(activeMessages.slice(idx + 1));
+				break;
+			}
+		}
+
+		if (!hasUsageCheckpoint) {
+			estimatedTokens += estimateTokens(summary) + estimateMessagesTokens(activeMessages);
+		}
+
+		return {
+			tokens: estimatedTokens,
+			estimated_tokens: estimatedTokens,
+			threshold,
+			percent: threshold > 0 ? Math.max(0, Math.round((estimatedTokens / threshold) * 100)) : 0,
+			source: 'estimated'
+		};
+	};
+
+	$: contextUsage = getContextUsage() ?? serverContextUsage;
 
 	let selectedToolIds = [];
 	let selectedSkillIds = [];
@@ -612,10 +699,14 @@
 
 		if (event.chat_id === $chatId) {
 			await tick();
+			const type = event?.data?.type ?? null;
+			if (type === 'chat:reload') {
+				await loadChat();
+				return;
+			}
 			let message = history.messages[event.message_id];
 
 			if (message) {
-				const type = event?.data?.type ?? null;
 				const data = event?.data?.data ?? null;
 
 				if (type === 'status') {
@@ -629,7 +720,7 @@
 				} else if (type === 'chat:active') {
 					if (!data?.active) {
 						taskIds = null;
-						if (chatIdProp && !$temporaryChatEnabled && hasPendingAssistantLeaf()) {
+						if ($chatId && !$temporaryChatEnabled && hasPendingAssistantLeaf()) {
 							await loadChat();
 						}
 					}
@@ -696,8 +787,7 @@
 					message.favorite = data.favorite;
 				} else if (type === 'chat:title') {
 					chatTitle.set(data);
-					currentChatPage.set(1);
-					await chats.set(await getChatList(localStorage.token, $currentChatPage));
+					await refreshChatList(localStorage.token);
 				} else if (type === 'chat:tags') {
 					chat = await getChatById(localStorage.token, $chatId);
 					allTags.set(await getAllTags(localStorage.token));
@@ -791,18 +881,18 @@
 
 	const onMessageHandler = async (event: {
 		origin: string;
+		source: unknown;
 		data: { type: string; text: string };
 	}) => {
 		const isSameOrigin = event.origin === window.origin;
 		const type = event.data?.type;
 
-		// Prompt-driving message types let an embedding page control the chat
-		// input / submission.  Cross-origin sources are only trusted when the
-		// user has explicitly opted in via the "iframe Sandbox Allow Same
-		// Origin" interface setting (the same toggle that governs whether
-		// rendered iframes receive `allow-same-origin`).
+		// Prompt-driving types are trusted only same-origin, from our own embed iframes
+		// (opaque srcdoc origin, submission still confirmed below) or via explicit opt-in.
 		const promptTypes = ['input:prompt', 'input:prompt:submit', 'action:submit'];
-		const isTrusted = isSameOrigin || ($settings?.iframeSandboxAllowSameOrigin ?? false);
+		const isOwnEmbed = isEmbedWindow(event.source);
+		const isTrusted =
+			isSameOrigin || isOwnEmbed || ($settings?.iframeSandboxAllowSameOrigin ?? false);
 
 		// Non-prompt message types are always restricted to same-origin only.
 		if (!isSameOrigin && !promptTypes.includes(type)) {
@@ -902,7 +992,8 @@
 		);
 
 	const handleSocketConnect = async () => {
-		if (!chatIdProp || $temporaryChatEnabled) {
+		// Gate on $chatId, not chatIdProp: chats started from the home page keep an empty chatIdProp
+		if (!$chatId || $temporaryChatEnabled) {
 			return;
 		}
 
@@ -1585,7 +1676,8 @@
 	};
 
 	const loadChat = async () => {
-		chatId.set(chatIdProp);
+		// chatIdProp is empty for chats started from the home page (URL set via replaceState)
+		chatId.set(chatIdProp || $chatId);
 
 		if ($temporaryChatEnabled) {
 			temporaryChatEnabled.set(false);
@@ -1633,6 +1725,7 @@
 
 				// Load tasks from chat-level DB field
 				chatTasks = chat?.tasks ?? [];
+				serverContextUsage = chat?.context_usage ?? null;
 
 				autoScroll = true;
 				await tick();
@@ -1759,8 +1852,7 @@
 		// Backend handles outlet filters and persistence inline.
 		// Just refresh the sidebar chat list.
 		if ($chatId == _chatId && !$temporaryChatEnabled) {
-			currentChatPage.set(1);
-			await chats.set(await getChatList(localStorage.token, $currentChatPage));
+			await refreshChatList(localStorage.token);
 		}
 	};
 
@@ -1811,8 +1903,7 @@
 					files: chatFiles
 				});
 
-				currentChatPage.set(1);
-				await chats.set(await getChatList(localStorage.token, $currentChatPage));
+				await refreshChatList(localStorage.token);
 			}
 		}
 	};
@@ -2122,6 +2213,106 @@
 		await sendMessage(history, userMessageId);
 	};
 
+	const handleManualCompact = async () => {
+		if (!$chatId || !history?.currentId) {
+			toast.message($i18n.t('No chat to compact'));
+			return;
+		}
+
+		const currentMessage = history.messages?.[history.currentId];
+		if (
+			generating ||
+			taskIds?.length ||
+			(currentMessage?.role === 'assistant' && !currentMessage.done)
+		) {
+			toast.warning($i18n.t('Wait for the current response to finish before compacting.'));
+			return;
+		}
+
+		const model = atSelectedModel?.id ?? selectedModels.find((modelId) => modelId);
+		const toastId = toast.loading($i18n.t('Compacting context...'));
+
+		try {
+			const result = await compactChatById(localStorage.token, $chatId, model);
+			serverContextUsage = result?.context_usage ?? serverContextUsage;
+
+			if (result?.compacted) {
+				toast.success($i18n.t('Context compacted'), { id: toastId });
+			} else {
+				const skippedReason =
+					result?.reason === 'too_short'
+						? $i18n.t('Chat is too short to compact')
+						: result?.reason === 'empty'
+							? $i18n.t('No chat to compact')
+							: $i18n.t('Nothing to compact');
+				toast.message(skippedReason, { id: toastId });
+			}
+
+			await loadChat();
+		} catch (error) {
+			const message = error?.detail ?? error?.message ?? $i18n.t('Context compaction failed');
+			toast.error(message, { id: toastId });
+		} finally {
+			messageInput?.setText('');
+			prompt = '';
+			document.getElementById('chat-input')?.focus();
+		}
+	};
+
+	const handleStatusCommand = () => {
+		messageInput?.showStatus();
+		messageInput?.setText('');
+		prompt = '';
+		document.getElementById('chat-input')?.focus();
+	};
+
+	const handleForkChat = async () => {
+		if (!$chatId || !history?.currentId) {
+			toast.message($i18n.t('No chat to fork'));
+			return;
+		}
+		if (!($user?.role === 'admin' || ($user?.permissions?.chat?.import ?? true))) {
+			toast.error($i18n.t('Access prohibited'));
+			return;
+		}
+
+		const currentMessage = history.messages?.[history.currentId];
+		if (
+			generating ||
+			taskIds?.length ||
+			(currentMessage?.role === 'assistant' && !currentMessage.done)
+		) {
+			toast.warning($i18n.t('Wait for the current response to finish before forking.'));
+			return;
+		}
+
+		const toastId = toast.loading($i18n.t('Forking chat...'));
+
+		try {
+			const result = await cloneChatById(
+				localStorage.token,
+				$chatId,
+				$i18n.t('Clone of {{TITLE}}', {
+					TITLE: $chatTitle || 'Chat'
+				})
+			);
+
+			if (result?.id) {
+				await goto(`/c/${result.id}`);
+				await refreshChatList(localStorage.token, { refreshPinned: true });
+				toast.success($i18n.t('Chat forked'), { id: toastId });
+			} else {
+				toast.error($i18n.t('Failed to fork chat'), { id: toastId });
+			}
+		} catch (error) {
+			toast.error(`${error}`, { id: toastId });
+		} finally {
+			messageInput?.setText('');
+			prompt = '';
+			document.getElementById('chat-input')?.focus();
+		}
+	};
+
 	const submitHandler = async (userPrompt, { _raw = false } = {}) => {
 		console.log('submitHandler', userPrompt, $chatId);
 
@@ -2131,6 +2322,19 @@
 
 		if (!equal(selectedModels, _selectedModels)) {
 			selectedModels = _selectedModels;
+		}
+
+		if (String(userPrompt).trim() === '/compact') {
+			await handleManualCompact();
+			return;
+		}
+		if (String(userPrompt).trim() === '/status') {
+			handleStatusCommand();
+			return;
+		}
+		if (String(userPrompt).trim() === '/fork') {
+			await handleForkChat();
+			return;
 		}
 
 		if (pendingOAuthTools.length > 0) {
@@ -2655,8 +2859,7 @@
 					await chatId.set(res.chat_id);
 					if (!$temporaryChatEnabled) {
 						window.history.replaceState(history.state, '', `/c/${res.chat_id}`);
-						currentChatPage.set(1);
-						await chats.set(await getChatList(localStorage.token, $currentChatPage));
+						await refreshChatList(localStorage.token);
 
 						// Persist chat-level params (system prompt, advanced
 						// params) that the backend doesn't receive in the
@@ -2935,8 +3138,7 @@
 
 			await tick();
 
-			await chats.set(await getChatList(localStorage.token, $currentChatPage));
-			currentChatPage.set(1);
+			await refreshChatList(localStorage.token);
 
 			selectedFolder.set(null);
 		} else {
@@ -3015,9 +3217,7 @@
 			);
 
 			if (res) {
-				currentChatPage.set(1);
-				await chats.set(await getChatList(localStorage.token, $currentChatPage));
-				await pinnedChats.set(await getPinnedChatList(localStorage.token));
+				await refreshChatList(localStorage.token, { refreshPinned: true });
 
 				toast.success($i18n.t('Chat moved successfully'));
 			}
@@ -3029,11 +3229,9 @@
 	const archiveChatHandler = async (id: string) => {
 		try {
 			await archiveChatById(localStorage.token, id);
-			currentChatPage.set(1);
 			initNewChat();
 			await goto('/');
-			chats.set(await getChatList(localStorage.token, $currentChatPage));
-			pinnedChats.set(await getPinnedChatList(localStorage.token));
+			await refreshChatList(localStorage.token, { refreshPinned: true });
 			toast.success($i18n.t('Chat archived.'));
 		} catch (error) {
 			console.error('Error archiving chat:', error);
@@ -3066,11 +3264,9 @@
 		try {
 			const res = await deleteChatById(localStorage.token, id);
 			if (res) {
-				currentChatPage.set(1);
 				initNewChat();
 				await goto('/');
-				chats.set(await getChatList(localStorage.token, $currentChatPage));
-				pinnedChats.set(await getPinnedChatList(localStorage.token));
+				await refreshChatList(localStorage.token, { refreshPinned: true });
 				allTags.set(await getAllTags(localStorage.token));
 				toast.success($i18n.t('Chat deleted.'));
 			}
@@ -3116,7 +3312,7 @@
 	}}
 >
 	<div class=" text-sm text-gray-500 flex-1 line-clamp-3">
-		{$i18n.t('This will delete')} <span class="  font-semibold">{$chatTitle}</span>.
+		{$i18n.t('This will delete')} <span class="  font-normal">{$chatTitle}</span>.
 	</div>
 </DeleteConfirmDialog>
 
@@ -3191,7 +3387,6 @@
 						}}
 						{history}
 						title={$chatTitle}
-						bind:selectedModels
 						shareEnabled={!!history.currentId}
 						{initNewChat}
 						scrollToTop={!isNearTop ? scrollToTop : null}
@@ -3225,7 +3420,7 @@
 								if (savedChat) {
 									temporaryChatEnabled.set(false);
 									chatId.set(savedChat.id);
-									chats.set(await getChatList(localStorage.token, $currentChatPage));
+									await refreshChatList(localStorage.token);
 
 									await goto(`/c/${savedChat.id}`);
 									toast.success($i18n.t('Conversation saved successfully'));
@@ -3261,7 +3456,7 @@
 										setInputText={(text) => {
 											messageInput?.setText(text);
 										}}
-										{selectedModels}
+										bind:selectedModels
 										{atSelectedModel}
 										{sendMessage}
 										{showMessage}
@@ -3290,7 +3485,7 @@
 										bind:this={messageInput}
 										{history}
 										{taskIds}
-										{selectedModels}
+										bind:selectedModels
 										bind:files
 										bind:prompt
 										bind:autoScroll
@@ -3304,6 +3499,11 @@
 										bind:atSelectedModel
 										bind:showCommands
 										bind:dragged
+										chatId={$chatId}
+										{contextUsage}
+										compactHandler={handleManualCompact}
+										statusHandler={handleStatusCommand}
+										forkHandler={handleForkChat}
 										toolServers={$toolServers}
 										{generating}
 										{stopResponse}
@@ -3373,7 +3573,7 @@
 							<div class="flex items-center h-full">
 								<Placeholder
 									{history}
-									{selectedModels}
+									bind:selectedModels
 									bind:messageInput
 									bind:files
 									bind:prompt
