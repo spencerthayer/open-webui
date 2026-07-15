@@ -30,7 +30,7 @@
 	import Tooltip from '../common/Tooltip.svelte';
 	import XMark from '../icons/XMark.svelte';
 	import ViewSelector from './common/ViewSelector.svelte';
-	import TagSelector from './common/TagSelector.svelte';
+	import SourceSelector from './common/SourceSelector.svelte';
 	import Loader from '../common/Loader.svelte';
 
 	type KnowledgeListItem = {
@@ -226,9 +226,30 @@
 		/>
 	</Modal>
 
-	<div class="space-y-1">
-		<div class="flex h-8 w-full items-center gap-2">
-			<div class="flex min-w-0 flex-1">
+	<div class="flex h-8 w-full items-center justify-between">
+		<div class="flex min-w-0 flex-1">
+			<div class="text-lg font-medium text-gray-500 dark:text-gray-500">
+				{total}
+			</div>
+		</div>
+
+		<div class="flex w-full justify-end gap-1.5">
+			<a
+				class=" px-2 py-1.5 h-7 rounded-xl bg-black text-white dark:bg-white dark:text-black transition font-medium text-sm flex items-center"
+				href="/workspace/knowledge/create"
+			>
+				<Plus className="size-3" strokeWidth="2.5" />
+
+				<div class=" hidden md:block md:ml-1 text-xs">{$i18n.t('New Knowledge')}</div>
+			</a>
+		</div>
+	</div>
+
+	<div
+		class="py-2 bg-white dark:bg-gray-900 rounded-3xl border border-gray-100/30 dark:border-gray-850/30"
+	>
+		<div class=" flex w-full space-x-2 py-0.5 px-3.5 pb-2">
+			<div class="flex flex-1">
 				<div class=" self-center ml-1 mr-3">
 					<Search className="size-3.5" />
 				</div>
@@ -254,46 +275,40 @@
 					</div>
 				{/if}
 			</div>
+		</div>
 
+		<div
+			class="px-3 flex w-full bg-transparent overflow-x-auto scrollbar-none -mx-1"
+			on:wheel={(e) => {
+				if (e.deltaY !== 0) {
+					e.preventDefault();
+					e.currentTarget.scrollLeft += e.deltaY;
+				}
+			}}
+		>
 			<div
-				class="flex max-w-[55%] shrink-0 overflow-x-auto scrollbar-none"
+				class="flex gap-0.5 w-fit text-center text-sm rounded-full bg-transparent px-1.5 whitespace-nowrap"
 				bind:this={tagsContainerElement}
-				on:wheel={(e) => {
-					if (e.deltaY !== 0) {
-						e.preventDefault();
-						e.currentTarget.scrollLeft += e.deltaY;
-					}
-				}}
 			>
-				<div
-					class="flex w-fit gap-0.5 text-center text-sm rounded-full bg-transparent whitespace-nowrap"
-				>
-					<ViewSelector
-						bind:value={viewOption}
-						align="end"
-						onChange={async (value) => {
-							localStorage.workspaceViewOption = value;
+				<ViewSelector
+					bind:value={viewOption}
+					onChange={async (value) => {
+						localStorage.workspaceViewOption = value;
 
-							await tick();
-						}}
-					/>
+						await tick();
+					}}
+				/>
 
-					<TagSelector
-						bind:value={sourceOption}
-						align="end"
-						placeholder={$i18n.t('All Sources')}
-						items={[
-							{ value: 'local', label: $i18n.t('Local') },
-							{ value: 'external', label: $i18n.t('Connected') }
-						]}
-						onChange={async () => {
-							localStorage.workspaceKnowledgeSourceOption = sourceOption;
-							await tick();
-						}}
-					/>
-				</div>
+				<SourceSelector
+					bind:value={sourceOption}
+					onChange={async () => {
+						localStorage.workspaceKnowledgeSourceOption = sourceOption;
+						await tick();
+					}}
+				/>
 			</div>
 		</div>
+
 
 		{#if items !== null && total !== null}
 			{#if (items ?? []).length !== 0}
