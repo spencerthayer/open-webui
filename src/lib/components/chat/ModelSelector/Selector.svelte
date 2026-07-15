@@ -911,22 +911,21 @@
 								<div style="height: {visibleStart * ITEM_HEIGHT}px;" />
 								{#each filteredItems.slice(visibleStart, visibleEnd) as item, i (item.value)}
 									{@const index = visibleStart + i}
-									<ModelItem
-										{selectionOnly}
-										{selectedModelIdx}
-										{item}
-										{index}
-										value={primaryValue}
-										{pinModelHandler}
-										{unloadModelHandler}
-									{deleteModelHandler}
+								<ModelItem
 									{selectionOnly}
+									{selectedModelIdx}
+									{item}
+									{index}
+									value={primaryValue}
+									{pinModelHandler}
+									{unloadModelHandler}
+									{deleteModelHandler}
 									{compareEnabled}
 									{selectedValues}
 									onClick={() => {
 										selectItem(item, index);
 									}}
-									/>
+								/>
 								{/each}
 								<div style="height: {(filteredItems.length - visibleEnd) * ITEM_HEIGHT}px;" />
 							</div>
