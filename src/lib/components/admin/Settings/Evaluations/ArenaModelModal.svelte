@@ -14,6 +14,7 @@
 	import ConfirmDialog from '$lib/components/common/ConfirmDialog.svelte';
 	import XMark from '$lib/components/icons/XMark.svelte';
 	import { WEBUI_BASE_URL } from '$lib/constants';
+	import SettingsSelect from '$lib/components/common/SettingsSelect.svelte';
 
 	export let show = false;
 	export let edit = false;
@@ -128,7 +129,7 @@
 	}}
 />
 
-<Modal size="sm" bind:show>
+<Modal size="sm" bind:show className="bg-white dark:bg-gray-900 rounded-4xl">
 	<div>
 		<div class=" flex justify-between dark:text-gray-100 px-4 pt-3 pb-1">
 			<div class=" text-sm font-medium self-center">
@@ -349,17 +350,16 @@
 						<hr class=" border-gray-100 dark:border-gray-700/10 my-2.5 w-full" />
 
 						<div class="flex items-center">
-							<select
-								class="w-full py-1 text-sm rounded-lg bg-transparent {selectedModelId
-									? ''
-									: 'text-gray-500'} placeholder:text-gray-300 dark:placeholder:text-gray-700 outline-hidden"
+							<SettingsSelect
 								bind:value={selectedModelId}
+								className="w-full"
+								selectClassName="text-sm"
 							>
 								<option value="">{$i18n.t('Select a model')}</option>
 								{#each $models.filter((m) => m?.owned_by !== 'arena') as model}
 									<option value={model.id} class="bg-gray-50 dark:bg-gray-700">{model.name}</option>
 								{/each}
-							</select>
+							</SettingsSelect>
 
 							<div>
 								<button

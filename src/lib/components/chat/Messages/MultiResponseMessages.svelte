@@ -49,6 +49,7 @@
 	export let triggerScroll: Function;
 
 	export let topPadding = false;
+	export let onInsertToNote: ((content: string) => void) | null = null;
 
 	const dispatch = createEventDispatcher();
 
@@ -320,6 +321,7 @@
 									{addMessages}
 									{readOnly}
 									{topPadding}
+									{onInsertToNote}
 								/>
 							{/if}
 						{/key}
@@ -377,6 +379,7 @@
 										{readOnly}
 										{editCodeBlock}
 										{topPadding}
+										{onInsertToNote}
 									/>
 								{/if}
 							{/key}
@@ -402,16 +405,20 @@
 									{$i18n.t('Merged Response')}
 								</Name>
 
-								<div class="mt-1 markdown-prose w-full min-w-full">
+								<div class="mt-1 w-full min-w-full">
 									{#if (message?.content ?? '') === ''}
 										<Skeleton />
 									{:else}
-										<Markdown id={`merged`} content={message.content ?? ''} />
+										<div class="markdown-prose">
+											<Markdown id={`merged`} content={message.content ?? ''} />
+										</div>
 									{/if}
 								</div>
 
 								{#if message.timestamp}
-									<div class="mt-0.5 flex justify-start whitespace-nowrap text-gray-600 dark:text-gray-500">
+									<div
+										class="mt-0.5 flex justify-start whitespace-nowrap text-gray-600 dark:text-gray-500"
+									>
 										<Tooltip
 											className="flex self-center"
 											content={formatMessageTimestampFull(message.timestamp * 1000)}

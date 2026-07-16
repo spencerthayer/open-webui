@@ -6,7 +6,7 @@
 	import { onMount, getContext, tick } from 'svelte';
 	const i18n = getContext('i18n');
 
-	import { WEBUI_NAME, config, mobile, models as _models, settings, user } from '$lib/stores';
+	import { config, models as _models, settings, user } from '$lib/stores';
 	import {
 		createNewModel,
 		deleteAllModels,
@@ -18,7 +18,6 @@
 		importModels
 	} from '$lib/apis/models';
 	import { copyToClipboard } from '$lib/utils';
-	import { page } from '$app/stores';
 	import { updateUserSettings } from '$lib/apis/users';
 
 	import { getModels } from '$lib/apis';
@@ -40,6 +39,10 @@
 	import ChevronDown from '$lib/components/icons/ChevronDown.svelte';
 	import CheckCircle from '$lib/components/icons/CheckCircle.svelte';
 	import Minus from '$lib/components/icons/Minus.svelte';
+	import DocumentArrowUp from '$lib/components/icons/DocumentArrowUp.svelte';
+	import Download from '$lib/components/icons/Download.svelte';
+	import Wrench from '$lib/components/icons/Wrench.svelte';
+	import SettingsIcon from '$lib/components/icons/Settings.svelte';
 	import { WEBUI_API_BASE_URL, WEBUI_BASE_URL } from '$lib/constants';
 	import { goto } from '$app/navigation';
 
@@ -52,6 +55,8 @@
 	type ModelListItem = { id: string; name?: string };
 
 	let shiftKey = false;
+
+	export let tabState: Record<string, unknown> | null = null;
 
 	let modelsImportInProgress = false;
 	let importFiles;
@@ -72,6 +77,11 @@
 	let viewOption = ''; // '' = All, 'enabled', 'disabled', 'visible', 'hidden'
 	let tags: string[] = [];
 	let selectedTag = '';
+
+	$: if (typeof tabState?.id === 'string' && tabState.id) {
+		selectedModelId = tabState.id;
+		tabState = null;
+	}
 
 	const perPage = 30;
 	let currentPage = 1;
@@ -399,11 +409,6 @@
 
 	onMount(async () => {
 		await init();
-		const id = $page.url.searchParams.get('id');
-
-		if (id) {
-			selectedModelId = id;
-		}
 
 		const onKeyDown = (event) => {
 			if (event.key === 'Shift') {
@@ -439,7 +444,7 @@
 {#if models !== null}
 	{#if selectedModelId === null}
 		<div class="flex h-full min-h-0 flex-col text-sm">
-			<div class="flex items-center justify-between mb-2">
+			<div class="mb-2 flex items-center justify-between">
 				<h2 class="text-sm font-medium text-gray-900 dark:text-white">
 					{$i18n.t('Models')}
 					<span class="ml-2 font-normal text-gray-500 dark:text-gray-500">
@@ -447,47 +452,17 @@
 					</span>
 				</h2>
 
-				<div class="flex items-center gap-2">
-					{#if $user?.role === 'admin'}
-						<button
-							type="button"
-							class="text-[0.625rem] text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors duration-100 disabled:opacity-30 disabled:pointer-events-none"
-							disabled={modelsImportInProgress}
-							on:click={() => {
-								modelsImportInputElement?.click();
-							}}
-						>
-							{$i18n.t('Import')}
-						</button>
-						<button
-							type="button"
-							class="text-[0.625rem] text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors duration-100"
-							on:click={() => {
-								downloadModels(models ?? []);
-							}}
-						>
-							{$i18n.t('Export')}
-						</button>
-					{/if}
+				<Tooltip content={$i18n.t('Settings')}>
 					<button
 						type="button"
-						class="text-[0.625rem] text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors duration-100"
-						on:click={() => {
-							showManageModal = true;
-						}}
-					>
-						{$i18n.t('Manage')}
-					</button>
-					<button
-						type="button"
-						class="text-[0.625rem] text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors duration-100"
+						class="flex h-6 w-6 items-center justify-center rounded-lg text-gray-400 transition-colors duration-75 hover:text-gray-700 dark:text-gray-600 dark:hover:text-gray-300"
 						on:click={() => {
 							showConfigModal = true;
 						}}
 					>
-						{$i18n.t('Settings')}
+						<SettingsIcon className="size-3.5" />
 					</button>
-				</div>
+				</Tooltip>
 			</div>
 
 			{#if $user?.role === 'admin'}
@@ -534,6 +509,7 @@
 							<Search className="size-3.5" />
 						</div>
 						<input
+							data-settings-search
 							class=" w-full text-sm py-1 rounded-r-xl outline-hidden bg-transparent"
 							bind:value={searchValue}
 							placeholder={$i18n.t('Search Models')}
@@ -596,6 +572,44 @@
 
 							<div slot="content">
 								<DropdownMenu className="w-[170px] shadow-sm">
+									{#if $user?.role === 'admin'}
+										<button
+											class="flex h-[1.6875rem] w-full cursor-pointer select-none items-center gap-2 rounded-xl bg-transparent px-2 text-[13px] disabled:pointer-events-none disabled:opacity-40 hover:text-gray-900 dark:hover:text-gray-100"
+											type="button"
+											disabled={modelsImportInProgress}
+											on:click={() => {
+												modelsImportInputElement?.click();
+											}}
+										>
+											<DocumentArrowUp className="size-3.5" />
+											<div class="flex items-center">{$i18n.t('Import')}</div>
+										</button>
+
+										<button
+											class="flex h-[1.6875rem] w-full cursor-pointer select-none items-center gap-2 rounded-xl bg-transparent px-2 text-[13px] hover:text-gray-900 dark:hover:text-gray-100"
+											type="button"
+											on:click={() => {
+												downloadModels(models ?? []);
+											}}
+										>
+											<Download className="size-3.5" />
+											<div class="flex items-center">{$i18n.t('Export')}</div>
+										</button>
+									{/if}
+
+									<button
+										class="flex h-[1.6875rem] w-full cursor-pointer select-none items-center gap-2 rounded-xl bg-transparent px-2 text-[13px] hover:text-gray-900 dark:hover:text-gray-100"
+										type="button"
+										on:click={() => {
+											showManageModal = true;
+										}}
+									>
+										<Wrench className="size-3.5" />
+										<div class="flex items-center">{$i18n.t('Manage')}</div>
+									</button>
+
+									<hr class="mx-1 my-0.5 border-gray-100 dark:border-gray-800" />
+
 									<button
 										class="flex h-[1.6875rem] w-full cursor-pointer select-none items-center gap-2 rounded-xl bg-transparent px-2 text-[13px] hover:text-gray-900 dark:hover:text-gray-100"
 										type="button"

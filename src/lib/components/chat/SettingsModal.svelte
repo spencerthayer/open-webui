@@ -3,6 +3,7 @@
 	import type { Writable } from 'svelte/store';
 	import { toast } from 'svelte-sonner';
 	import { config, models, settings, user } from '$lib/stores';
+	import type { SettingsModalRequest } from '$lib/stores';
 	import { updateUserSettings } from '$lib/apis/users';
 	import { getBackendConfig, getModels as _getModels } from '$lib/apis';
 
@@ -11,6 +12,7 @@
 	import About from './Settings/About.svelte';
 	import General from './Settings/General.svelte';
 	import Interface from './Settings/Interface.svelte';
+	import Notifications from './Settings/Notifications.svelte';
 	import Shortcuts from './Settings/Shortcuts.svelte';
 	import Audio from './Settings/Audio.svelte';
 	import DataControls from './Settings/DataControls.svelte';
@@ -28,6 +30,7 @@
 	import WrenchAlt from '../icons/WrenchAlt.svelte';
 	import Face from '../icons/Face.svelte';
 	import AppNotification from '../icons/AppNotification.svelte';
+	import AdjustmentsHorizontal from '../icons/AdjustmentsHorizontal.svelte';
 	import ArchiveBox from '../icons/ArchiveBox.svelte';
 	import ChevronLeft from '../icons/ChevronLeft.svelte';
 	import Keyboard from '../icons/Keyboard.svelte';
@@ -51,13 +54,20 @@
 
 	const i18n: Writable<any> = getContext('i18n');
 
-	export let show: boolean | string = false;
+	export let show: boolean | string | SettingsModalRequest = false;
 	let modalShow = false;
-	let lastShow: boolean | string = false;
+	let lastShow: boolean | string | SettingsModalRequest = false;
+	let tabState: Record<string, unknown> | null = null;
 
 	$: if (show !== lastShow) {
 		lastShow = show;
-		if (typeof show === 'string') {
+		if (show && typeof show === 'object') {
+			selectedTab = show.tab;
+			tabState = show.state ?? null;
+			show = true;
+			lastShow = true;
+			modalShow = true;
+		} else if (typeof show === 'string') {
 			selectedTab = show;
 			show = true;
 			lastShow = true;
@@ -66,6 +76,7 @@
 			modalShow = show;
 			if (!show) {
 				selectedTab = 'general';
+				tabState = null;
 			}
 		}
 	}
@@ -74,6 +85,7 @@
 		show = false;
 		lastShow = false;
 		selectedTab = 'general';
+		tabState = null;
 	}
 
 	interface SettingsTab {
@@ -88,6 +100,7 @@
 	const personalSettingGroups: Record<string, string> = {
 		general: 'Basics',
 		interface: 'Basics',
+		notifications: 'Basics',
 		shortcuts: 'Basics',
 		connections: 'Services',
 		tools: 'Services',
@@ -143,7 +156,6 @@
 				'keepalive',
 				'keep alive',
 				'languages',
-				'notifications',
 				'requestmode',
 				'request mode',
 				'systemparameters',
@@ -286,8 +298,24 @@
 			]
 		},
 		{
+			id: 'notifications',
+			title: 'Notifications',
+			keywords: [
+				'browser notifications',
+				'browsernotifications',
+				'chat failed',
+				'chat finished',
+				'notification sound',
+				'notifications',
+				'notify',
+				'webhook',
+				'webhook notifications',
+				'webhooks'
+			]
+		},
+		{
 			id: 'shortcuts',
-			title: 'Keyboard Shortcuts',
+			title: 'Keyboard',
 			keywords: [
 				'commands',
 				'hotkeys',
@@ -638,6 +666,21 @@
 			keywords: ['sub-agents', 'subagents', 'delegation', 'background', 'agents']
 		},
 		{
+			id: 'admin:interface',
+			title: 'Interface',
+			keywords: ['interface', 'ui', 'appearance', 'banners', 'tasks', 'prompt suggestions', 'tags']
+		},
+		{
+			id: 'admin:audio',
+			title: 'Audio',
+			keywords: ['audio', 'voice', 'speech', 'tts', 'stt', 'whisper', 'deepgram', 'azure']
+		},
+		{
+			id: 'admin:images',
+			title: 'Images',
+			keywords: ['images', 'generation', 'dalle', 'stable diffusion', 'comfyui', 'automatic1111']
+		},
+		{
 			id: 'admin:evaluations',
 			title: 'Evaluations',
 			keywords: ['evaluations', 'feedback', 'rating', 'arena', 'leaderboard', 'preference']
@@ -672,21 +715,7 @@
 			title: 'Pipelines',
 			keywords: ['pipelines', 'workflows', 'filters', 'valves', 'middleware']
 		},
-		{
-			id: 'admin:interface',
-			title: 'Interface',
-			keywords: ['interface', 'ui', 'appearance', 'banners', 'tasks', 'prompt suggestions', 'tags']
-		},
-		{
-			id: 'admin:audio',
-			title: 'Audio',
-			keywords: ['audio', 'voice', 'speech', 'tts', 'stt', 'whisper', 'deepgram', 'azure']
-		},
-		{
-			id: 'admin:images',
-			title: 'Images',
-			keywords: ['images', 'generation', 'dalle', 'stable diffusion', 'comfyui', 'automatic1111']
-		},
+
 		{
 			id: 'admin:db',
 			title: 'Database',
@@ -834,15 +863,12 @@
 			class="hidden md:flex items-center gap-1.5 h-7 px-2 mx-1 mt-1 mb-0.5 shrink-0 rounded-lg text-xs bg-gray-50/70 dark:bg-white/[0.03]"
 		>
 			<div class="self-center rounded-l-xl bg-transparent">
-				<Search
-					className="size-3.5"
-					strokeWidth={($settings?.highContrastMode ?? false) ? '3' : '1.5'}
-				/>
+				<Search className="size-3.5" strokeWidth="1.5" />
 			</div>
 			<label class="sr-only" for="search-input-settings-modal">{$i18n.t('Search')}</label>
 			<input
-				class={`w-full py-1 text-xs bg-transparent dark:text-gray-300 outline-hidden
-							${($settings?.highContrastMode ?? false) ? 'placeholder-gray-800' : ''}`}
+				data-settings-search
+				class="w-full text-xs bg-transparent py-1 outline-hidden dark:text-gray-300"
 				bind:value={search}
 				id="search-input-settings-modal"
 				on:input={searchDebounceHandler}
@@ -851,7 +877,7 @@
 		</div>
 
 		<div
-			class="tabs flex min-w-0 flex-1 min-h-0 overflow-x-auto md:overflow-x-hidden md:overflow-y-auto md:flex-col p-1 pl-0 md:pl-1 gap-px"
+			class="tabs scrollbar-none flex min-w-0 flex-1 min-h-0 overflow-x-auto md:overflow-x-hidden md:overflow-y-auto md:flex-col p-1 pl-0 md:pl-1 gap-px"
 		>
 			<span
 				class="hidden md:block text-[0.625rem] text-gray-400 dark:text-gray-600 px-2 mt-1.5 mb-0.5"
@@ -890,8 +916,21 @@
 								selectedTab = 'interface';
 							}}
 						>
-							<AppNotification className="size-3.5" strokeWidth="2" />
+							<AdjustmentsHorizontal className="size-3.5" strokeWidth="2" />
 							<span>{$i18n.t('Interface')}</span>
+						</button>
+					{:else if tabId === 'notifications'}
+						<button
+							role="tab"
+							aria-controls="tab-notifications"
+							aria-selected={selectedTab === 'notifications'}
+							class={tabButtonClass(selectedTab === 'notifications')}
+							on:click={() => {
+								selectedTab = 'notifications';
+							}}
+						>
+							<AppNotification className="size-3.5" strokeWidth="2" />
+							<span>{$i18n.t('Notifications')}</span>
 						</button>
 					{:else if tabId === 'shortcuts'}
 						<button
@@ -904,7 +943,7 @@
 							}}
 						>
 							<Keyboard className="size-3.5" strokeWidth="2" />
-							<span>{$i18n.t('Keyboard Shortcuts')}</span>
+							<span>{$i18n.t('Keyboard')}</span>
 						</button>
 					{:else if tabId === 'connections'}
 						{#if $user?.role === 'admin' || ($user?.role === 'user' && $config?.features?.enable_direct_connections)}
@@ -1076,6 +1115,8 @@
 						toast.success($i18n.t('Settings saved successfully!'));
 					}}
 				/>
+			{:else if selectedTab === 'notifications'}
+				<Notifications {saveSettings} />
 			{:else if selectedTab === 'shortcuts'}
 				<Shortcuts />
 			{:else if selectedTab === 'connections'}
@@ -1112,7 +1153,6 @@
 				<ArchivedChats />
 			{:else if selectedTab === 'account'}
 				<Account
-					{saveSettings}
 					saveHandler={() => {
 						toast.success($i18n.t('Settings saved successfully!'));
 					}}
@@ -1130,7 +1170,7 @@
 					}}
 				/>
 			{:else if selectedTab === 'admin:models'}
-				<AdminModels />
+				<AdminModels bind:tabState />
 			{:else if selectedTab === 'admin:subagents'}
 				<AdminSubagents />
 			{:else if selectedTab === 'admin:evaluations'}
@@ -1179,26 +1219,3 @@
 		</div>
 	</div>
 </Modal>
-
-<style>
-	input::-webkit-outer-spin-button,
-	input::-webkit-inner-spin-button {
-		/* display: none; <- Crashes Chrome on hover */
-		-webkit-appearance: none;
-		margin: 0; /* <-- Apparently some margin are still there even though it's hidden */
-	}
-
-	.tabs::-webkit-scrollbar {
-		display: none; /* for Chrome, Safari and Opera */
-	}
-
-	.tabs {
-		-ms-overflow-style: none; /* IE and Edge */
-		scrollbar-width: none; /* Firefox */
-	}
-
-	input[type='number'] {
-		appearance: textfield;
-		-moz-appearance: textfield; /* Firefox */
-	}
-</style>

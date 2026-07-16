@@ -21,6 +21,7 @@
 	import AdminSettingField from './AdminSettingField.svelte';
 	import AdminSettingRow from './AdminSettingRow.svelte';
 	import AdminSettingSection from './AdminSettingSection.svelte';
+	import SettingsSelect from '$lib/components/common/SettingsSelect.svelte';
 
 	const i18n: any = getContext('i18n');
 
@@ -49,8 +50,6 @@
 		'w-full h-7 rounded-lg border border-gray-100/50 bg-gray-50/40 px-2 text-xs text-gray-700 outline-hidden transition-colors placeholder:text-gray-300 focus:border-blue-400 dark:border-white/[0.04] dark:bg-white/[0.03] dark:text-gray-300 dark:placeholder:text-gray-700 dark:focus:border-blue-500';
 	const textareaClass =
 		'w-full rounded-lg border border-gray-100/50 bg-gray-50/40 px-2 py-1.5 text-xs text-gray-700 outline-hidden transition-colors placeholder:text-gray-300 focus:border-blue-400 dark:border-white/[0.04] dark:bg-white/[0.03] dark:text-gray-300 dark:placeholder:text-gray-700 dark:focus:border-blue-500';
-	const selectClass =
-		'cursor-pointer bg-transparent text-xs text-gray-600 outline-hidden dark:text-gray-400';
 
 	const updateLdapServerHandler = async () => {
 		await updateLdapConfig(localStorage.token, ENABLE_LDAP);
@@ -125,21 +124,25 @@
 	<div class="flex-1 min-h-0 overflow-y-auto scrollbar-hover pr-1.5">
 		{#if adminConfig !== null}
 			<AdminSettingSection title={$i18n.t('User Access')} first>
-				<AdminSettingRow label={$i18n.t('Default User Role')}>
-					<select
-						class={`${selectClass} pr-8 text-right`}
+				<AdminSettingRow
+					label={$i18n.t('Default User Role')}
+					description={$i18n.t('Role assigned to new users when they create an account.')}
+				>
+					<SettingsSelect
 						bind:value={adminConfig.DEFAULT_USER_ROLE}
 						placeholder={$i18n.t('Select a role')}
 					>
 						<option value="pending">{$i18n.t('pending')}</option>
 						<option value="user">{$i18n.t('user')}</option>
 						<option value="admin">{$i18n.t('admin')}</option>
-					</select>
+					</SettingsSelect>
 				</AdminSettingRow>
 
-				<AdminSettingRow label={$i18n.t('Default Group')}>
-					<select
-						class={`${selectClass} max-w-48 truncate pr-8 text-right`}
+				<AdminSettingRow
+					label={$i18n.t('Default Group')}
+					description={$i18n.t('Group assigned to new users by default.')}
+				>
+					<SettingsSelect
 						bind:value={adminConfig.DEFAULT_GROUP_ID}
 						placeholder={$i18n.t('Select a group')}
 					>
@@ -147,24 +150,36 @@
 						{#each groups as group}
 							<option value={group.id}>{group.name}</option>
 						{/each}
-					</select>
+					</SettingsSelect>
 				</AdminSettingRow>
 
-				<AdminSettingRow label={$i18n.t('Enable New Sign Ups')}>
+				<AdminSettingRow
+					label={$i18n.t('New Sign Ups')}
+					description={$i18n.t('Allow new users to create accounts.')}
+				>
 					<Switch bind:state={adminConfig.ENABLE_SIGNUP} />
 				</AdminSettingRow>
 
-				<AdminSettingRow label={$i18n.t('Enable API Keys')}>
+				<AdminSettingRow
+					label={$i18n.t('API Keys')}
+					description={$i18n.t('Allow users to create API keys for programmatic access.')}
+				>
 					<Switch bind:state={adminConfig.ENABLE_API_KEYS} />
 				</AdminSettingRow>
 
 				{#if adminConfig?.ENABLE_API_KEYS}
-					<AdminSettingRow label={$i18n.t('API Key Endpoint Restrictions')}>
+					<AdminSettingRow
+						label={$i18n.t('API Key Endpoint Restrictions')}
+						description={$i18n.t('Limit API keys to configured endpoints.')}
+					>
 						<Switch bind:state={adminConfig.ENABLE_API_KEYS_ENDPOINT_RESTRICTIONS} />
 					</AdminSettingRow>
 
 					{#if adminConfig?.ENABLE_API_KEYS_ENDPOINT_RESTRICTIONS}
-						<AdminSettingField label={$i18n.t('Allowed Endpoints')}>
+						<AdminSettingField
+							label={$i18n.t('Allowed Endpoints')}
+							description={$i18n.t('Comma-separated API paths that API keys can access.')}
+						>
 							<input
 								class={inputClass}
 								type="text"
@@ -208,12 +223,18 @@
 			</AdminSettingSection>
 
 			<AdminSettingSection title={$i18n.t('Pending Accounts')}>
-				<AdminSettingRow label={$i18n.t('Show Admin Details in Account Pending Overlay')}>
+				<AdminSettingRow
+					label={$i18n.t('Admin Details')}
+					description={$i18n.t('Show admin contact details while an account waits for approval.')}
+				>
 					<Switch bind:state={adminConfig.SHOW_ADMIN_DETAILS} />
 				</AdminSettingRow>
 
 				{#if adminConfig.SHOW_ADMIN_DETAILS}
-					<AdminSettingField label={$i18n.t('Admin Contact Email')}>
+					<AdminSettingField
+						label={$i18n.t('Admin Contact Email')}
+						description={$i18n.t('Email shown in the pending account overlay.')}
+					>
 						<input
 							class={inputClass}
 							type="email"
@@ -223,7 +244,10 @@
 					</AdminSettingField>
 				{/if}
 
-				<AdminSettingField label={$i18n.t('Pending User Overlay Title')}>
+				<AdminSettingField
+					label={$i18n.t('Pending User Overlay Title')}
+					description={$i18n.t('Custom title shown while an account waits for approval.')}
+				>
 					<Textarea
 						className={textareaClass}
 						placeholder={$i18n.t(
@@ -233,7 +257,10 @@
 					/>
 				</AdminSettingField>
 
-				<AdminSettingField label={$i18n.t('Pending User Overlay Content')}>
+				<AdminSettingField
+					label={$i18n.t('Pending User Overlay Content')}
+					description={$i18n.t('Custom message shown while an account waits for approval.')}
+				>
 					<Textarea
 						className={textareaClass}
 						placeholder={$i18n.t(
@@ -246,13 +273,19 @@
 		{/if}
 
 		<AdminSettingSection title={$i18n.t('LDAP')}>
-			<AdminSettingRow label={$i18n.t('Enable LDAP')}>
+			<AdminSettingRow
+				label={$i18n.t('LDAP')}
+				description={$i18n.t('Allow users to authenticate with an LDAP directory.')}
+			>
 				<Switch bind:state={ENABLE_LDAP} />
 			</AdminSettingRow>
 
 			{#if ENABLE_LDAP}
-				<div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
-					<AdminSettingField label={$i18n.t('Label')}>
+				<div class="grid grid-cols-1 gap-x-3 gap-y-2.5 sm:grid-cols-2">
+					<AdminSettingField
+						label={$i18n.t('Label')}
+						description={$i18n.t('Display name for this LDAP connection.')}
+					>
 						<input
 							class={inputClass}
 							required
@@ -262,8 +295,11 @@
 					</AdminSettingField>
 				</div>
 
-				<div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
-					<AdminSettingField label={$i18n.t('Host')}>
+				<div class="grid grid-cols-1 gap-x-3 gap-y-2.5 sm:grid-cols-2">
+					<AdminSettingField
+						label={$i18n.t('Host')}
+						description={$i18n.t('LDAP server hostname or IP address.')}
+					>
 						<input
 							class={inputClass}
 							required
@@ -272,7 +308,7 @@
 						/>
 					</AdminSettingField>
 
-					<AdminSettingField label={$i18n.t('Port')}>
+					<AdminSettingField label={$i18n.t('Port')} description={$i18n.t('LDAP server port.')}>
 						<Tooltip
 							placement="top-start"
 							content={$i18n.t('Default to 389 or 636 if TLS is enabled')}
@@ -288,8 +324,11 @@
 					</AdminSettingField>
 				</div>
 
-				<div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
-					<AdminSettingField label={$i18n.t('Application DN')}>
+				<div class="grid grid-cols-1 gap-x-3 gap-y-2.5 sm:grid-cols-2">
+					<AdminSettingField
+						label={$i18n.t('Application DN')}
+						description={$i18n.t('Bind DN used for directory search.')}
+					>
 						<Tooltip
 							content={$i18n.t('The Application Account DN you bind with for search')}
 							placement="top-start"
@@ -302,19 +341,24 @@
 						</Tooltip>
 					</AdminSettingField>
 
-					<AdminSettingField label={$i18n.t('Application DN Password')}>
+					<AdminSettingField
+						label={$i18n.t('Application DN Password')}
+						description={$i18n.t('Password for the bind DN.')}
+					>
 						<SensitiveInput
+							variant="settings"
 							placeholder={$i18n.t('Enter Application DN Password')}
 							required={false}
-							outerClassName="flex flex-1"
-							inputClassName={inputClass}
 							bind:value={LDAP_SERVER.app_dn_password}
 						/>
 					</AdminSettingField>
 				</div>
 
-				<div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
-					<AdminSettingField label={$i18n.t('Attribute for Mail')}>
+				<div class="grid grid-cols-1 gap-x-3 gap-y-2.5 sm:grid-cols-2">
+					<AdminSettingField
+						label={$i18n.t('Attribute for Mail')}
+						description={$i18n.t('LDAP attribute used as the user email address.')}
+					>
 						<Tooltip
 							content={$i18n.t(
 								'The LDAP attribute that maps to the mail that users use to sign in.'
@@ -330,7 +374,10 @@
 						</Tooltip>
 					</AdminSettingField>
 
-					<AdminSettingField label={$i18n.t('Attribute for Username')}>
+					<AdminSettingField
+						label={$i18n.t('Attribute for Username')}
+						description={$i18n.t('LDAP attribute used as the username.')}
+					>
 						<Tooltip
 							content={$i18n.t(
 								'The LDAP attribute that maps to the username that users use to sign in.'
@@ -347,7 +394,10 @@
 					</AdminSettingField>
 				</div>
 
-				<AdminSettingField label={$i18n.t('Search Base')}>
+				<AdminSettingField
+					label={$i18n.t('Search Base')}
+					description={$i18n.t('Base DN used when searching for users.')}
+				>
 					<Tooltip content={$i18n.t('The base to search for users')} placement="top-start">
 						<input
 							class={inputClass}
@@ -358,7 +408,10 @@
 					</Tooltip>
 				</AdminSettingField>
 
-				<AdminSettingField label={$i18n.t('Search Filters')}>
+				<AdminSettingField
+					label={$i18n.t('Search Filters')}
+					description={$i18n.t('LDAP filter used to match signing-in users.')}
+				>
 					<input
 						class={inputClass}
 						placeholder={$i18n.t('Example: (&(objectClass=inetOrgPerson)(uid=%s))')}
@@ -373,12 +426,18 @@
 					</a>
 				</AdminSettingField>
 
-				<AdminSettingRow label={$i18n.t('TLS')}>
+				<AdminSettingRow
+					label={$i18n.t('TLS')}
+					description={$i18n.t('Use TLS when connecting to the LDAP server.')}
+				>
 					<Switch bind:state={LDAP_SERVER.use_tls} />
 				</AdminSettingRow>
 
 				{#if LDAP_SERVER.use_tls}
-					<AdminSettingField label={$i18n.t('Certificate Path')}>
+					<AdminSettingField
+						label={$i18n.t('Certificate Path')}
+						description={$i18n.t('Certificate file used for TLS verification.')}
+					>
 						<input
 							class={inputClass}
 							placeholder={$i18n.t('Enter certificate path')}
@@ -386,11 +445,17 @@
 						/>
 					</AdminSettingField>
 
-					<AdminSettingRow label={$i18n.t('Validate certificate')}>
+					<AdminSettingRow
+						label={$i18n.t('Validate Certificate')}
+						description={$i18n.t('Verify the LDAP server certificate when TLS is enabled.')}
+					>
 						<Switch bind:state={LDAP_SERVER.validate_cert} />
 					</AdminSettingRow>
 
-					<AdminSettingField label={$i18n.t('Ciphers')}>
+					<AdminSettingField
+						label={$i18n.t('Ciphers')}
+						description={$i18n.t('TLS cipher list for LDAP connections.')}
+					>
 						<Tooltip content={$i18n.t('Default to ALL')} placement="top-start">
 							<input
 								class={inputClass}
@@ -405,8 +470,11 @@
 
 		{#if oauthConfig}
 			<AdminSettingSection title={$i18n.t('OAuth / OIDC')}>
-				<div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
-					<AdminSettingField label={$i18n.t('Provider Name')}>
+				<div class="grid grid-cols-1 gap-x-3 gap-y-2.5 sm:grid-cols-2">
+					<AdminSettingField
+						label={$i18n.t('Provider Name')}
+						description={$i18n.t('Display name shown for the OAuth provider.')}
+					>
 						<input
 							class={inputClass}
 							placeholder="SSO"
@@ -414,7 +482,10 @@
 						/>
 					</AdminSettingField>
 
-					<AdminSettingField label={$i18n.t('Provider URL')}>
+					<AdminSettingField
+						label={$i18n.t('Provider URL')}
+						description={$i18n.t('OpenID discovery URL for this provider.')}
+					>
 						<input
 							class={inputClass}
 							placeholder="https://accounts.google.com/.well-known/openid-configuration"
@@ -423,8 +494,11 @@
 					</AdminSettingField>
 				</div>
 
-				<div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
-					<AdminSettingField label={$i18n.t('Client ID')}>
+				<div class="grid grid-cols-1 gap-x-3 gap-y-2.5 sm:grid-cols-2">
+					<AdminSettingField
+						label={$i18n.t('Client ID')}
+						description={$i18n.t('OAuth client identifier from the provider.')}
+					>
 						<input
 							class={inputClass}
 							placeholder={$i18n.t('Enter Client ID')}
@@ -432,19 +506,24 @@
 						/>
 					</AdminSettingField>
 
-					<AdminSettingField label={$i18n.t('Client Secret')}>
+					<AdminSettingField
+						label={$i18n.t('Client Secret')}
+						description={$i18n.t('OAuth client secret from the provider.')}
+					>
 						<SensitiveInput
+							variant="settings"
 							placeholder={$i18n.t('Enter Client Secret')}
 							required={false}
-							outerClassName="flex flex-1"
-							inputClassName={inputClass}
 							bind:value={oauthConfig.OAUTH_CLIENT_SECRET}
 						/>
 					</AdminSettingField>
 				</div>
 
-				<div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
-					<AdminSettingField label={$i18n.t('Redirect URI')}>
+				<div class="grid grid-cols-1 gap-x-3 gap-y-2.5 sm:grid-cols-2">
+					<AdminSettingField
+						label={$i18n.t('Redirect URI')}
+						description={$i18n.t('Callback URI registered with the provider.')}
+					>
 						<input
 							class={inputClass}
 							placeholder={$i18n.t('Enter Redirect URI')}
@@ -452,7 +531,10 @@
 						/>
 					</AdminSettingField>
 
-					<AdminSettingField label={$i18n.t('Scopes')}>
+					<AdminSettingField
+						label={$i18n.t('Scopes')}
+						description={$i18n.t('OAuth scopes requested during sign-in.')}
+					>
 						<input
 							class={inputClass}
 							placeholder="openid email profile"
@@ -461,8 +543,11 @@
 					</AdminSettingField>
 				</div>
 
-				<div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
-					<AdminSettingField label={$i18n.t('Email Claim')}>
+				<div class="grid grid-cols-1 gap-x-3 gap-y-2.5 sm:grid-cols-2">
+					<AdminSettingField
+						label={$i18n.t('Email Claim')}
+						description={$i18n.t('Claim used as the user email address.')}
+					>
 						<input
 							class={inputClass}
 							placeholder="email"
@@ -470,7 +555,10 @@
 						/>
 					</AdminSettingField>
 
-					<AdminSettingField label={$i18n.t('Username Claim')}>
+					<AdminSettingField
+						label={$i18n.t('Username Claim')}
+						description={$i18n.t('Claim used as the display name.')}
+					>
 						<input
 							class={inputClass}
 							placeholder="name"
@@ -479,8 +567,11 @@
 					</AdminSettingField>
 				</div>
 
-				<div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
-					<AdminSettingField label={$i18n.t('Picture Claim')}>
+				<div class="grid grid-cols-1 gap-x-3 gap-y-2.5 sm:grid-cols-2">
+					<AdminSettingField
+						label={$i18n.t('Picture Claim')}
+						description={$i18n.t('Claim used as the profile picture URL.')}
+					>
 						<input
 							class={inputClass}
 							placeholder="picture"
@@ -488,24 +579,39 @@
 						/>
 					</AdminSettingField>
 
-					<AdminSettingField label={$i18n.t('Sub Claim')}>
+					<AdminSettingField
+						label={$i18n.t('Sub Claim')}
+						description={$i18n.t('Claim used as the stable user identifier.')}
+					>
 						<input class={inputClass} placeholder="sub" bind:value={oauthConfig.OAUTH_SUB_CLAIM} />
 					</AdminSettingField>
 				</div>
 
-				<AdminSettingRow label={$i18n.t('Enable OAuth Signup')}>
+				<AdminSettingRow
+					label={$i18n.t('OAuth Signup')}
+					description={$i18n.t('Allow users to create accounts through OAuth.')}
+				>
 					<Switch bind:state={oauthConfig.ENABLE_OAUTH_SIGNUP} />
 				</AdminSettingRow>
 
-				<AdminSettingRow label={$i18n.t('Merge Accounts by Email')}>
+				<AdminSettingRow
+					label={$i18n.t('Merge Accounts by Email')}
+					description={$i18n.t('Link OAuth sign-ins to existing accounts with the same email.')}
+				>
 					<Switch bind:state={oauthConfig.OAUTH_MERGE_ACCOUNTS_BY_EMAIL} />
 				</AdminSettingRow>
 
-				<AdminSettingRow label={$i18n.t('Auto Redirect')}>
+				<AdminSettingRow
+					label={$i18n.t('Auto Redirect')}
+					description={$i18n.t('Send users directly to the OAuth provider from the sign-in page.')}
+				>
 					<Switch bind:state={oauthConfig.OAUTH_AUTO_REDIRECT} />
 				</AdminSettingRow>
 
-				<AdminSettingField label={$i18n.t('Allowed Domains')}>
+				<AdminSettingField
+					label={$i18n.t('Allowed Domains')}
+					description={$i18n.t('Email domains allowed to sign in with OAuth.')}
+				>
 					<input
 						class={inputClass}
 						placeholder="* (all domains)"
@@ -513,13 +619,19 @@
 					/>
 				</AdminSettingField>
 
-				<AdminSettingRow label={$i18n.t('Enable Role Mapping')}>
+				<AdminSettingRow
+					label={$i18n.t('Role Mapping')}
+					description={$i18n.t('Map OAuth claims to Open WebUI roles.')}
+				>
 					<Switch bind:state={oauthConfig.ENABLE_OAUTH_ROLE_MANAGEMENT} />
 				</AdminSettingRow>
 
 				{#if oauthConfig.ENABLE_OAUTH_ROLE_MANAGEMENT}
-					<div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
-						<AdminSettingField label={$i18n.t('Roles Claim')}>
+					<div class="grid grid-cols-1 gap-x-3 gap-y-2.5 sm:grid-cols-2">
+						<AdminSettingField
+							label={$i18n.t('Roles Claim')}
+							description={$i18n.t('Claim containing provider roles.')}
+						>
 							<input
 								class={inputClass}
 								placeholder="roles"
@@ -527,7 +639,10 @@
 							/>
 						</AdminSettingField>
 
-						<AdminSettingField label={$i18n.t('Admin Roles')}>
+						<AdminSettingField
+							label={$i18n.t('Admin Roles')}
+							description={$i18n.t('Provider roles that grant admin access.')}
+						>
 							<input
 								class={inputClass}
 								placeholder="admin"
@@ -536,7 +651,10 @@
 						</AdminSettingField>
 					</div>
 
-					<AdminSettingField label={$i18n.t('Allowed Roles')}>
+					<AdminSettingField
+						label={$i18n.t('Allowed Roles')}
+						description={$i18n.t('Provider roles allowed to sign in.')}
+					>
 						<input
 							class={inputClass}
 							placeholder="*"
@@ -545,17 +663,26 @@
 					</AdminSettingField>
 				{/if}
 
-				<AdminSettingRow label={$i18n.t('Enable Group Mapping')}>
+				<AdminSettingRow
+					label={$i18n.t('Group Mapping')}
+					description={$i18n.t('Map OAuth claims to Open WebUI groups.')}
+				>
 					<Switch bind:state={oauthConfig.ENABLE_OAUTH_GROUP_MANAGEMENT} />
 				</AdminSettingRow>
 
 				{#if oauthConfig.ENABLE_OAUTH_GROUP_MANAGEMENT}
-					<AdminSettingRow label={$i18n.t('Auto-Create Groups')}>
+					<AdminSettingRow
+						label={$i18n.t('Auto-Create Groups')}
+						description={$i18n.t('Create missing groups from OAuth claims.')}
+					>
 						<Switch bind:state={oauthConfig.ENABLE_OAUTH_GROUP_CREATION} />
 					</AdminSettingRow>
 
-					<div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
-						<AdminSettingField label={$i18n.t('Group Claim')}>
+					<div class="grid grid-cols-1 gap-x-3 gap-y-2.5 sm:grid-cols-2">
+						<AdminSettingField
+							label={$i18n.t('Group Claim')}
+							description={$i18n.t('Claim containing provider groups.')}
+						>
 							<input
 								class={inputClass}
 								placeholder="groups"
@@ -563,7 +690,10 @@
 							/>
 						</AdminSettingField>
 
-						<AdminSettingField label={$i18n.t('Blocked Groups')}>
+						<AdminSettingField
+							label={$i18n.t('Blocked Groups')}
+							description={$i18n.t('Provider groups blocked from signing in.')}
+						>
 							<input
 								class={inputClass}
 								placeholder={$i18n.t('Comma-separated group names')}
@@ -573,15 +703,24 @@
 					</div>
 				{/if}
 
-				<AdminSettingRow label={$i18n.t('Update Email')}>
+				<AdminSettingRow
+					label={$i18n.t('Update Email')}
+					description={$i18n.t('Refresh the account email from OAuth on sign-in.')}
+				>
 					<Switch bind:state={oauthConfig.OAUTH_UPDATE_EMAIL_ON_LOGIN} />
 				</AdminSettingRow>
 
-				<AdminSettingRow label={$i18n.t('Update Name')}>
+				<AdminSettingRow
+					label={$i18n.t('Update Name')}
+					description={$i18n.t('Refresh the account name from OAuth on sign-in.')}
+				>
 					<Switch bind:state={oauthConfig.OAUTH_UPDATE_NAME_ON_LOGIN} />
 				</AdminSettingRow>
 
-				<AdminSettingRow label={$i18n.t('Update Picture')}>
+				<AdminSettingRow
+					label={$i18n.t('Update Picture')}
+					description={$i18n.t('Refresh the profile picture from OAuth on sign-in.')}
+				>
 					<Switch bind:state={oauthConfig.OAUTH_UPDATE_PICTURE_ON_LOGIN} />
 				</AdminSettingRow>
 			</AdminSettingSection>

@@ -58,7 +58,7 @@ export const chatTitle = writable('');
 export const channels = writable([]);
 export const channelId = writable(null);
 
-export { chats, pinnedChats } from './chat-list';
+export { chats, pinnedChats } from './chatList';
 export const pinnedNotes = writable([]);
 export const tags = writable([]);
 export const folders = writable([]);
@@ -111,9 +111,14 @@ export const chatRequestQueues: Writable<
 
 export const sidebarWidth = writable(245);
 
+export type SettingsModalRequest = {
+	tab: string;
+	state?: Record<string, unknown> | null;
+};
+
 export const showSidebar = writable(false);
 export const showSearch = writable(false);
-export const showSettings: Writable<boolean | string> = writable(false);
+export const showSettings: Writable<boolean | string | SettingsModalRequest> = writable(false);
 export const showChangelog = writable(false);
 
 export const showControls = writable(false);
@@ -317,6 +322,7 @@ type Config = {
 		enable_admin_export: boolean;
 		enable_admin_chat_access: boolean;
 		enable_admin_analytics: boolean;
+		enable_context_compaction?: boolean;
 		enable_community_sharing: boolean;
 		enable_memories: boolean;
 		enable_plugins?: boolean;

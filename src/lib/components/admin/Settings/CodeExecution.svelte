@@ -4,12 +4,12 @@
 
 	import SensitiveInput from '$lib/components/common/SensitiveInput.svelte';
 
-	import Tooltip from '$lib/components/common/Tooltip.svelte';
 	import Textarea from '$lib/components/common/Textarea.svelte';
 	import Switch from '$lib/components/common/Switch.svelte';
 	import AdminSettingField from './AdminSettingField.svelte';
 	import AdminSettingRow from './AdminSettingRow.svelte';
 	import AdminSettingSection from './AdminSettingSection.svelte';
+	import SettingsSelect from '$lib/components/common/SettingsSelect.svelte';
 
 	const i18n: any = getContext('i18n');
 
@@ -22,10 +22,6 @@
 		'w-full h-7 rounded-lg border border-gray-100/50 bg-gray-50/40 px-2 text-xs text-gray-700 outline-hidden transition-colors placeholder:text-gray-300 focus:border-blue-400 dark:border-white/[0.04] dark:bg-white/[0.03] dark:text-gray-300 dark:placeholder:text-gray-700 dark:focus:border-blue-500';
 	const textareaClass =
 		'w-full rounded-lg border border-gray-100/50 bg-gray-50/40 px-2 py-1.5 text-xs text-gray-700 outline-hidden transition-colors placeholder:text-gray-300 focus:border-blue-400 dark:border-white/[0.04] dark:bg-white/[0.03] dark:text-gray-300 dark:placeholder:text-gray-700 dark:focus:border-blue-500';
-	const inlineInputClass =
-		'w-fit h-7 rounded-lg border border-transparent bg-transparent px-2 text-xs text-gray-600 outline-hidden transition-colors hover:bg-black/5 focus:border-blue-400 dark:text-gray-400 dark:hover:bg-white/5 dark:focus:border-blue-500';
-	const selectClass =
-		'cursor-pointer bg-transparent text-xs text-gray-600 outline-hidden dark:text-gray-400';
 
 	const submitHandler = async () => {
 		const res = await setCodeExecutionConfig(localStorage.token, config);
@@ -53,8 +49,11 @@
 
 	<div class="flex-1 min-h-0 overflow-y-auto scrollbar-hover pr-1.5">
 		{#if config}
-			<AdminSettingSection first>
-				<AdminSettingRow label={$i18n.t('Enable Code Execution')}>
+			<AdminSettingSection title={$i18n.t('Code Execution')} first>
+				<AdminSettingRow
+					label={$i18n.t('Enable Code Execution')}
+					description={$i18n.t('Allow models to run generated code and return execution results.')}
+				>
 					<Switch bind:state={config.ENABLE_CODE_EXECUTION} />
 				</AdminSettingRow>
 
@@ -65,10 +64,9 @@
 							? $i18n.t(
 									'Warning: Jupyter execution enables arbitrary code execution, posing severe security risks—proceed with extreme caution.'
 								)
-							: ''}
+							: $i18n.t('Choose the runtime used for generated code blocks.')}
 					>
-						<select
-							class={selectClass}
+						<SettingsSelect
 							bind:value={config.CODE_EXECUTION_ENGINE}
 							placeholder={$i18n.t('Select a engine')}
 							required
@@ -77,11 +75,14 @@
 							{#each engines as engine}
 								<option value={engine}>{engine}{engine === 'jupyter' ? ' (Legacy)' : ''}</option>
 							{/each}
-						</select>
+						</SettingsSelect>
 					</AdminSettingRow>
 
 					{#if config.CODE_EXECUTION_ENGINE === 'jupyter'}
-						<AdminSettingField label={$i18n.t('Jupyter URL')}>
+						<AdminSettingField
+							label={$i18n.t('Jupyter URL')}
+							description={$i18n.t('Connect code execution to a Jupyter server endpoint.')}
+						>
 							<input
 								class={inputClass}
 								type="text"
@@ -91,16 +92,18 @@
 							/>
 						</AdminSettingField>
 
-						<AdminSettingRow label={$i18n.t('Jupyter Auth')}>
-							<select
-								class={selectClass}
+						<AdminSettingRow
+							label={$i18n.t('Jupyter Auth')}
+							description={$i18n.t('Select how Open WebUI authenticates with the Jupyter server.')}
+						>
+							<SettingsSelect
 								bind:value={config.CODE_EXECUTION_JUPYTER_AUTH}
 								placeholder={$i18n.t('Select an auth method')}
 							>
 								<option selected value="">{$i18n.t('None')}</option>
 								<option value="token">{$i18n.t('Token')}</option>
 								<option value="password">{$i18n.t('Password')}</option>
-							</select>
+							</SettingsSelect>
 						</AdminSettingRow>
 
 						{#if config.CODE_EXECUTION_JUPYTER_AUTH}
@@ -108,46 +111,49 @@
 								label={config.CODE_EXECUTION_JUPYTER_AUTH === 'password'
 									? $i18n.t('Jupyter Password')
 									: $i18n.t('Jupyter Token')}
+								description={$i18n.t('Credentials used to authenticate with the Jupyter server.')}
 							>
 								{#if config.CODE_EXECUTION_JUPYTER_AUTH === 'password'}
 									<SensitiveInput
+										variant="settings"
 										type="text"
 										placeholder={$i18n.t('Enter Jupyter Password')}
 										bind:value={config.CODE_EXECUTION_JUPYTER_AUTH_PASSWORD}
 										autocomplete="off"
-										outerClassName="flex flex-1"
-										inputClassName={inputClass}
 									/>
 								{:else}
 									<SensitiveInput
+										variant="settings"
 										type="text"
 										placeholder={$i18n.t('Enter Jupyter Token')}
 										bind:value={config.CODE_EXECUTION_JUPYTER_AUTH_TOKEN}
 										autocomplete="off"
-										outerClassName="flex flex-1"
-										inputClassName={inputClass}
 									/>
 								{/if}
 							</AdminSettingField>
 						{/if}
 
-						<AdminSettingRow label={$i18n.t('Code Execution Timeout')}>
-							<Tooltip content={$i18n.t('Enter timeout in seconds')}>
-								<input
-									class={inlineInputClass}
-									type="number"
-									bind:value={config.CODE_EXECUTION_JUPYTER_TIMEOUT}
-									placeholder={$i18n.t('e.g. 60')}
-									autocomplete="off"
-								/>
-							</Tooltip>
-						</AdminSettingRow>
+						<AdminSettingField
+							label={$i18n.t('Code Execution Timeout')}
+							description={$i18n.t('Maximum runtime in seconds before execution is stopped.')}
+						>
+							<input
+								class={inputClass}
+								type="number"
+								bind:value={config.CODE_EXECUTION_JUPYTER_TIMEOUT}
+								placeholder={$i18n.t('e.g. 60')}
+								autocomplete="off"
+							/>
+						</AdminSettingField>
 					{/if}
 				{/if}
 			</AdminSettingSection>
 
 			<AdminSettingSection title={$i18n.t('Code Interpreter')}>
-				<AdminSettingRow label={$i18n.t('Enable Code Interpreter')}>
+				<AdminSettingRow
+					label={$i18n.t('Enable Code Interpreter')}
+					description={$i18n.t('Allow models to use the code interpreter tool during chats.')}
+				>
 					<Switch bind:state={config.ENABLE_CODE_INTERPRETER} />
 				</AdminSettingRow>
 
@@ -158,10 +164,9 @@
 							? $i18n.t(
 									'Warning: Jupyter execution enables arbitrary code execution, posing severe security risks—proceed with extreme caution.'
 								)
-							: ''}
+							: $i18n.t('Choose the runtime used by the code interpreter tool.')}
 					>
-						<select
-							class={selectClass}
+						<SettingsSelect
 							bind:value={config.CODE_INTERPRETER_ENGINE}
 							placeholder={$i18n.t('Select a engine')}
 							required
@@ -170,11 +175,14 @@
 							{#each engines as engine}
 								<option value={engine}>{engine}{engine === 'jupyter' ? ' (Legacy)' : ''}</option>
 							{/each}
-						</select>
+						</SettingsSelect>
 					</AdminSettingRow>
 
 					{#if config.CODE_INTERPRETER_ENGINE === 'jupyter'}
-						<AdminSettingField label={$i18n.t('Jupyter URL')}>
+						<AdminSettingField
+							label={$i18n.t('Jupyter URL')}
+							description={$i18n.t('Connect code interpreter to a Jupyter server endpoint.')}
+						>
 							<input
 								class={inputClass}
 								type="text"
@@ -184,16 +192,18 @@
 							/>
 						</AdminSettingField>
 
-						<AdminSettingRow label={$i18n.t('Jupyter Auth')}>
-							<select
-								class={selectClass}
+						<AdminSettingRow
+							label={$i18n.t('Jupyter Auth')}
+							description={$i18n.t('Select how Open WebUI authenticates with the Jupyter server.')}
+						>
+							<SettingsSelect
 								bind:value={config.CODE_INTERPRETER_JUPYTER_AUTH}
 								placeholder={$i18n.t('Select an auth method')}
 							>
 								<option selected value="">{$i18n.t('None')}</option>
 								<option value="token">{$i18n.t('Token')}</option>
 								<option value="password">{$i18n.t('Password')}</option>
-							</select>
+							</SettingsSelect>
 						</AdminSettingRow>
 
 						{#if config.CODE_INTERPRETER_JUPYTER_AUTH}
@@ -201,55 +211,55 @@
 								label={config.CODE_INTERPRETER_JUPYTER_AUTH === 'password'
 									? $i18n.t('Jupyter Password')
 									: $i18n.t('Jupyter Token')}
+								description={$i18n.t('Credentials used to authenticate with the Jupyter server.')}
 							>
 								{#if config.CODE_INTERPRETER_JUPYTER_AUTH === 'password'}
 									<SensitiveInput
+										variant="settings"
 										type="text"
 										placeholder={$i18n.t('Enter Jupyter Password')}
 										bind:value={config.CODE_INTERPRETER_JUPYTER_AUTH_PASSWORD}
 										autocomplete="off"
-										outerClassName="flex flex-1"
-										inputClassName={inputClass}
 									/>
 								{:else}
 									<SensitiveInput
+										variant="settings"
 										type="text"
 										placeholder={$i18n.t('Enter Jupyter Token')}
 										bind:value={config.CODE_INTERPRETER_JUPYTER_AUTH_TOKEN}
 										autocomplete="off"
-										outerClassName="flex flex-1"
-										inputClassName={inputClass}
 									/>
 								{/if}
 							</AdminSettingField>
 						{/if}
 
-						<AdminSettingRow label={$i18n.t('Code Execution Timeout')}>
-							<Tooltip content={$i18n.t('Enter timeout in seconds')}>
-								<input
-									class={inlineInputClass}
-									type="number"
-									bind:value={config.CODE_INTERPRETER_JUPYTER_TIMEOUT}
-									placeholder={$i18n.t('e.g. 60')}
-									autocomplete="off"
-								/>
-							</Tooltip>
-						</AdminSettingRow>
+						<AdminSettingField
+							label={$i18n.t('Code Execution Timeout')}
+							description={$i18n.t('Maximum runtime in seconds before execution is stopped.')}
+						>
+							<input
+								class={inputClass}
+								type="number"
+								bind:value={config.CODE_INTERPRETER_JUPYTER_TIMEOUT}
+								placeholder={$i18n.t('e.g. 60')}
+								autocomplete="off"
+							/>
+						</AdminSettingField>
 					{/if}
 
-					<AdminSettingField label={$i18n.t('Code Interpreter Prompt Template')}>
-						<Tooltip
-							content={$i18n.t('Leave empty to use the default prompt, or enter a custom prompt')}
-							placement="top-start"
-						>
-							<Textarea
-								className={textareaClass}
-								bind:value={config.CODE_INTERPRETER_PROMPT_TEMPLATE}
-								placeholder={$i18n.t(
-									'Leave empty to use the default prompt, or enter a custom prompt'
-								)}
-							/>
-						</Tooltip>
+					<AdminSettingField
+						label={$i18n.t('Code Interpreter Prompt Template')}
+						description={$i18n.t(
+							'Leave empty to use the default prompt, or enter a custom prompt.'
+						)}
+					>
+						<Textarea
+							className={textareaClass}
+							bind:value={config.CODE_INTERPRETER_PROMPT_TEMPLATE}
+							placeholder={$i18n.t(
+								'Leave empty to use the default prompt, or enter a custom prompt'
+							)}
+						/>
 					</AdminSettingField>
 				{/if}
 			</AdminSettingSection>
