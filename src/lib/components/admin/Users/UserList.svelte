@@ -26,7 +26,6 @@
 
 	import ConfirmDialog from '$lib/components/common/ConfirmDialog.svelte';
 
-	import Plus from '$lib/components/icons/Plus.svelte';
 	import Search from '$lib/components/icons/Search.svelte';
 	import XMark from '$lib/components/icons/XMark.svelte';
 	import ChevronUp from '$lib/components/icons/ChevronUp.svelte';
@@ -177,7 +176,7 @@
 		<Spinner className="size-5" />
 	</div>
 {:else}
-	<div class="pt-0.5 pb-1 sticky top-0 z-10 bg-white dark:bg-gray-900">
+	<div class="sticky top-0 z-10 bg-white dark:bg-gray-900">
 		<div class="flex h-8 flex-1 items-center w-full gap-2">
 			<div class="flex min-w-0 flex-1 items-center">
 				<div class="self-center ml-1 mr-3">
@@ -207,16 +206,14 @@
 				{/if}
 			</div>
 
-			<Tooltip content={$i18n.t('Add User')}>
-				<button
-					class="p-2 rounded-xl hover:bg-gray-100 dark:bg-gray-900 dark:hover:bg-gray-850 transition font-normal text-sm flex items-center"
-					on:click={() => {
-						showAddUserModal = !showAddUserModal;
-					}}
-				>
-					<Plus className="size-3.5" />
-				</button>
-			</Tooltip>
+			<button
+				class="ml-1 shrink-0 rounded-lg bg-gray-50 px-2.5 py-1 text-xs text-gray-900 transition ring-1 ring-gray-200 hover:bg-gray-100 dark:bg-gray-850 dark:text-gray-100 dark:ring-gray-800 dark:hover:bg-gray-800"
+				on:click={() => {
+					showAddUserModal = !showAddUserModal;
+				}}
+			>
+				{$i18n.t('Add User')}
+			</button>
 		</div>
 	</div>
 
@@ -226,7 +223,7 @@
 				<tr class=" border-b-[1.5px] border-gray-50 dark:border-gray-850/30">
 					<th
 						scope="col"
-						class="px-2.5 py-1.5 cursor-pointer select-none"
+						class="px-2.5 py-1.5 font-normal cursor-pointer select-none"
 						on:click={() => setSortKey('name')}
 					>
 						<div class="flex gap-1.5 items-center">
@@ -249,7 +246,7 @@
 					</th>
 					<th
 						scope="col"
-						class="px-2.5 py-1.5 cursor-pointer select-none"
+						class="px-2.5 py-1.5 font-normal cursor-pointer select-none"
 						on:click={() => setSortKey('role')}
 					>
 						<div class="flex gap-1.5 items-center">
@@ -272,7 +269,7 @@
 					</th>
 					<th
 						scope="col"
-						class="px-2.5 py-1.5 cursor-pointer select-none"
+						class="px-2.5 py-1.5 font-normal cursor-pointer select-none"
 						on:click={() => setSortKey('email')}
 					>
 						<div class="flex gap-1.5 items-center">
@@ -296,7 +293,7 @@
 
 					<th
 						scope="col"
-						class="px-2.5 py-1.5 cursor-pointer select-none"
+						class="px-2.5 py-1.5 font-normal cursor-pointer select-none"
 						on:click={() => setSortKey('last_active_at')}
 					>
 						<div class="flex gap-1.5 items-center">
@@ -320,7 +317,7 @@
 					</th>
 					<th
 						scope="col"
-						class="px-2.5 py-1.5 cursor-pointer select-none"
+						class="px-2.5 py-1.5 font-normal cursor-pointer select-none"
 						on:click={() => setSortKey('created_at')}
 					>
 						<div class="flex gap-1.5 items-center">
@@ -341,7 +338,7 @@
 						</div>
 					</th>
 
-					<th scope="col" class="px-2.5 py-1.5 text-right"></th>
+					<th scope="col" class="px-2.5 py-1.5 font-normal text-right"></th>
 				</tr>
 			</thead>
 			<tbody class="">
@@ -351,7 +348,7 @@
 							<div class="flex items-center gap-2">
 								<ProfilePreview {user} side="right" align="center" sideOffset={6}>
 									<img
-										class="rounded-full w-6 min-w-6 h-6 object-cover flex-shrink-0"
+										class="rounded-full size-5.5 object-cover flex-shrink-0"
 										src={`${WEBUI_API_BASE_URL}/users/${user.id}/profile/image`}
 										alt="user"
 										on:error={(e) => {

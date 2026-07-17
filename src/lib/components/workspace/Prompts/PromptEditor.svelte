@@ -2,6 +2,7 @@
 	import { onMount, tick, getContext } from 'svelte';
 	import type { Writable } from 'svelte/store';
 	import type { i18n as i18nType } from 'i18next';
+	import { goto } from '$app/navigation';
 
 	import Textarea from '$lib/components/common/Textarea.svelte';
 	import { toast } from 'svelte-sonner';
@@ -15,6 +16,7 @@
 	import Spinner from '$lib/components/common/Spinner.svelte';
 	import Modal from '$lib/components/common/Modal.svelte';
 	import XMark from '$lib/components/icons/XMark.svelte';
+	import ChevronLeft from '$lib/components/icons/ChevronLeft.svelte';
 	import {
 		getPromptHistory,
 		setProductionPromptVersion,
@@ -26,7 +28,6 @@
 	import dayjs from 'dayjs';
 	import localizedFormat from 'dayjs/plugin/localizedFormat';
 	import PromptHistoryMenu from './PromptHistoryMenu.svelte';
-	import Badge from '$lib/components/common/Badge.svelte';
 	import Tags from '$lib/components/common/Tags.svelte';
 
 	dayjs.extend(localizedFormat);
@@ -382,9 +383,19 @@
 
 {#if edit}
 	<!-- Edit mode: Read-only view with history -->
-	<div class="flex flex-col w-full h-full max-h-[100dvh]">
-		<!-- Header -->
-		<div class="flex items-start justify-between gap-4 shrink-0">
+	<div class="flex h-full max-h-[100dvh] w-full flex-col">
+		<button
+			class="mb-1 flex h-6 w-fit items-center gap-1 rounded-md text-xs text-gray-400 transition-colors duration-75 hover:text-gray-700 dark:text-gray-600 dark:hover:text-gray-300"
+			type="button"
+			on:click={() => {
+				goto('/workspace/prompts');
+			}}
+		>
+			<ChevronLeft className="size-3" strokeWidth="2" />
+			<span>{$i18n.t('Back')}</span>
+		</button>
+
+		<div class="flex shrink-0 items-start justify-between gap-3 pb-1">
 			<div class="min-w-0 flex-1">
 				<input
 					class="w-full bg-transparent text-sm outline-hidden"
@@ -394,53 +405,39 @@
 					{disabled}
 				/>
 
-				<div class="flex w-full flex-1 items-center gap-0.5 text-xs text-gray-500">
-					<span>/</span>
-					<input
-						class="bg-transparent outline-hidden"
-						placeholder={$i18n.t('command')}
-						bind:value={command}
-						on:input={debouncedSaveMetadata}
-						{disabled}
-					/>
+				<div class="mt-0.5 flex min-w-0 items-center gap-2 text-xs text-gray-500">
+					<div class="flex min-w-0 flex-1 items-center gap-0.5">
+						<span>/</span>
+						<input
+							class="min-w-0 flex-1 bg-transparent outline-hidden"
+							placeholder={$i18n.t('command')}
+							bind:value={command}
+							on:input={debouncedSaveMetadata}
+							{disabled}
+						/>
+					</div>
 				</div>
 			</div>
 
-			<div>
-				<div class="flex items-center gap-2 shrink-0 justify-end">
-					{#if !disabled}
-						<button
-							class="flex shrink-0 items-center rounded-lg bg-gray-50 px-2 py-1 text-xs text-gray-900 ring-1 ring-gray-200 transition hover:bg-gray-100 dark:bg-gray-850 dark:text-gray-100 dark:ring-gray-800 dark:hover:bg-gray-800"
-							on:click={() => (showEditModal = true)}
-						>
-							{$i18n.t('Edit')}
-						</button>
+			<div class="flex shrink-0 items-center gap-1.5 pr-0.5">
+				{#if !disabled}
+					<button
+						class="flex shrink-0 items-center gap-1 rounded-lg bg-gray-50 px-2 py-1 text-xs font-normal text-gray-900 transition ring-1 ring-gray-200 hover:bg-gray-100 dark:bg-gray-850 dark:text-gray-100 dark:ring-gray-800 dark:hover:bg-gray-800"
+						on:click={() => (showEditModal = true)}
+					>
+						{$i18n.t('Edit')}
+					</button>
 
-						<AccessButton on:click={() => (showAccessControlModal = true)} />
-					{:else}
-						<span class="text-xs text-gray-500 bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded-full"
-							>{$i18n.t('Read Only')}</span
-						>
-					{/if}
-				</div>
-
-				<div>
-					<Tooltip content={$i18n.t('Click to copy ID')}>
-						<button
-							class="text-xs text-gray-500 font-mono px-2 py-1 rounded-lg cursor-pointer hover:underline transition"
-							on:click={() => {
-								copyToClipboard(prompt.id);
-								toast.success($i18n.t('ID copied to clipboard'));
-							}}
-						>
-							{prompt.id}
-						</button>
-					</Tooltip>
-				</div>
+					<AccessButton on:click={() => (showAccessControlModal = true)} />
+				{:else}
+					<span class="rounded-lg bg-gray-100 px-2 py-1 text-xs text-gray-500 dark:bg-gray-850">
+						{$i18n.t('Read Only')}
+					</span>
+				{/if}
 			</div>
 		</div>
 
-		<div class="mb-2 flex justify-between items-center gap-2">
+		<div class="mb-1 flex justify-between items-center gap-2">
 			<div class="flex-1 min-w-0">
 				<Tags
 					{tags}
@@ -456,6 +453,18 @@
 					}}
 				/>
 			</div>
+
+			<Tooltip content={$i18n.t('Click to copy ID')}>
+				<button
+					class="min-w-0 max-w-[14rem] shrink-0 truncate rounded-md px-1 py-0.5 font-mono text-xs text-gray-400 transition hover:text-gray-700 dark:hover:text-gray-300"
+					on:click={() => {
+						copyToClipboard(prompt.id);
+						toast.success($i18n.t('ID copied to clipboard'));
+					}}
+				>
+					{prompt.id}
+				</button>
+			</Tooltip>
 		</div>
 
 		<div class="flex flex-1 flex-col gap-3 overflow-hidden pb-4 md:flex-row">
@@ -483,7 +492,9 @@
 					{#if selectedHistoryEntry && !disabled}
 						<div class="flex items-center gap-2">
 							{#if selectedHistoryEntry.id === prompt?.version_id}
-								<Badge type="success" content={$i18n.t('Live')} />
+								<span class="inline-flex items-center text-xs text-gray-400 dark:text-gray-500">
+									{$i18n.t('Live')}
+								</span>
 							{:else}
 								<button
 									class="text-xs text-gray-500 hover:text-gray-900 dark:hover:text-gray-300 hover:underline transition"
@@ -517,9 +528,12 @@
 						</button>
 					</div>
 					<!-- Scrollable content -->
-					<div class="h-full overflow-y-auto rounded-lg bg-transparent px-1 py-1">
-						<pre class="text-xs whitespace-pre-wrap font-mono pr-8">{selectedHistoryEntry?.snapshot
-								?.content || content}</pre>
+					<div
+						class="h-full overflow-y-auto rounded-lg bg-gray-50/60 px-3 py-2 dark:bg-white/[0.03]"
+					>
+						<pre
+							class="whitespace-pre-wrap pr-8 font-mono text-[11px] leading-relaxed">{selectedHistoryEntry
+								?.snapshot?.content || content}</pre>
 					</div>
 				</div>
 			</div>
@@ -662,41 +676,47 @@
 		{#if history.length > 0}
 			<div class="space-y-0 flex-1 overflow-y-auto" on:scroll={handleHistoryScroll}>
 				{#each history as entry, index}
-					<div class="flex">
-						<!-- Content -->
-						<button
-							class="mb-0.5 flex-1 rounded-lg px-2 py-1.5 text-left transition group
-								{selectedHistoryEntry?.id === entry.id
-								? 'bg-gray-50/60 dark:bg-white/[0.03]'
-								: 'hover:bg-gray-50/60 dark:hover:bg-white/[0.03]'}"
-							on:click={() => (selectedHistoryEntry = entry)}
-						>
-							<!-- Commit Message -->
-							<div class="flex items-center gap-2 mb-1">
-								<div class="text-xs text-gray-900 dark:text-white truncate">
-									{entry.commit_message || $i18n.t('Update')}
-								</div>
-								{#if entry.id === prompt?.version_id}
-									<Badge type="success" content={$i18n.t('Live')} />
-								{/if}
-							</div>
+					<button
+						class="group relative w-full px-1.5 py-1.5 pl-3 text-left transition {selectedHistoryEntry?.id ===
+						entry.id
+							? 'text-gray-900 dark:text-white'
+							: 'text-gray-500 hover:text-gray-900 dark:text-gray-500 dark:hover:text-gray-200'}"
+						on:click={() => (selectedHistoryEntry = entry)}
+					>
+						<span
+							class="absolute left-0 top-1.5 h-[calc(100%-0.75rem)] w-px rounded-full transition {selectedHistoryEntry?.id ===
+							entry.id
+								? 'bg-gray-900 dark:bg-gray-200'
+								: 'bg-transparent'}"
+						></span>
 
-							<!-- User + Time -->
-							<div class="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
-								{#if entry.user}
-									<img
-										src={`/api/v1/users/${entry.user.id}/profile/image`}
-										alt={entry.user.name}
-										class="size-3 rounded-full mr-0.5"
-										on:error={(e) => (e.target.src = '/user.png')}
-									/>
-									<span class="truncate">{entry.user.name}</span>
-									<span>•</span>
-								{/if}
-								<span class="shrink-0">{renderDate(entry.created_at)}</span>
+						<div class="flex items-center gap-2 mb-1">
+							<div class="truncate text-xs">
+								{entry.commit_message || $i18n.t('Update')}
 							</div>
-						</button>
-					</div>
+							{#if entry.id === prompt?.version_id}
+								<span
+									class="inline-flex shrink-0 items-center text-xs text-gray-400 dark:text-gray-500"
+								>
+									{$i18n.t('Live')}
+								</span>
+							{/if}
+						</div>
+
+						<div class="flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500">
+							{#if entry.user}
+								<img
+									src={`/api/v1/users/${entry.user.id}/profile/image`}
+									alt={entry.user.name}
+									class="size-3 rounded-full mr-0.5"
+									on:error={(e) => (e.target.src = '/user.png')}
+								/>
+								<span class="truncate">{entry.user.name}</span>
+								<span>•</span>
+							{/if}
+							<span class="shrink-0">{renderDate(entry.created_at)}</span>
+						</div>
+					</button>
 				{/each}
 
 				{#if historyLoading}

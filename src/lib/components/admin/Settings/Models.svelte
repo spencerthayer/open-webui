@@ -1,17 +1,19 @@
 <script lang="ts">
 	import { marked } from 'marked';
+	import Sortable from 'sortablejs';
 	import fileSaver from 'file-saver';
 	const { saveAs } = fileSaver;
 
-	import { onMount, getContext, tick } from 'svelte';
+	import { onMount, onDestroy, getContext, tick } from 'svelte';
 	const i18n = getContext('i18n');
 
-	import { config, models as _models, settings, user } from '$lib/stores';
+	import { config, models as _models, settings, showSettings, user } from '$lib/stores';
 	import {
 		createNewModel,
 		deleteAllModels,
 		getBaseModelTags,
 		getBaseModels,
+		getModelById,
 		toggleModelById,
 		updateModelById,
 		updateModelAccessGrants,
@@ -21,6 +23,7 @@
 	import { updateUserSettings } from '$lib/apis/users';
 
 	import { getModels } from '$lib/apis';
+	import { getModelsConfig, setModelsConfig } from '$lib/apis/configs';
 	import Search from '$lib/components/icons/Search.svelte';
 	import Tooltip from '$lib/components/common/Tooltip.svelte';
 	import Switch from '$lib/components/common/Switch.svelte';
@@ -38,19 +41,20 @@
 	import Eye from '$lib/components/icons/Eye.svelte';
 	import ChevronDown from '$lib/components/icons/ChevronDown.svelte';
 	import CheckCircle from '$lib/components/icons/CheckCircle.svelte';
+	import GarbageBin from '$lib/components/icons/GarbageBin.svelte';
 	import Minus from '$lib/components/icons/Minus.svelte';
 	import DocumentArrowUp from '$lib/components/icons/DocumentArrowUp.svelte';
 	import Download from '$lib/components/icons/Download.svelte';
+	import EllipsisVertical from '$lib/components/icons/EllipsisVertical.svelte';
 	import Wrench from '$lib/components/icons/Wrench.svelte';
 	import SettingsIcon from '$lib/components/icons/Settings.svelte';
-	import { WEBUI_API_BASE_URL, WEBUI_BASE_URL } from '$lib/constants';
+	import { WEBUI_API_BASE_URL } from '$lib/constants';
 	import { goto } from '$app/navigation';
 
 	import Dropdown from '$lib/components/common/Dropdown.svelte';
 	import DropdownMenu from '$lib/components/common/DropdownMenu.svelte';
 	import AdminViewSelector from './Models/AdminViewSelector.svelte';
 	import TagSelector from '$lib/components/workspace/common/TagSelector.svelte';
-	import Pagination from '$lib/components/common/Pagination.svelte';
 
 	type ModelListItem = { id: string; name?: string };
 
@@ -62,8 +66,16 @@
 	let importFiles;
 	let modelsImportInputElement: HTMLInputElement;
 	let tagsContainerElement: HTMLDivElement;
+	let modelListElement: HTMLDivElement;
+	let sortable = null;
 
 	let models = null;
+	let modelsConfig = null;
+	let modelOrderList: string[] = [];
+	let defaultModelIds: string[] = [];
+	let defaultPinnedModelIds: string[] = [];
+	let defaultModelIdSet = new Set<string>();
+	let defaultPinnedModelIdSet = new Set<string>();
 
 	let workspaceModels: ModelListItem[] = [];
 	let baseModels: ModelListItem[] = [];
@@ -73,6 +85,9 @@
 
 	let showConfigModal = false;
 	let showManageModal = false;
+	let showResetModal = false;
+	let savingModelOrder = false;
+	let modelOrderDirty = false;
 
 	let viewOption = ''; // '' = All, 'enabled', 'disabled', 'visible', 'hidden'
 	let tags: string[] = [];
@@ -82,9 +97,6 @@
 		selectedModelId = tabState.id;
 		tabState = null;
 	}
-
-	const perPage = 30;
-	let currentPage = 1;
 
 	const isPublicModel = (model) => {
 		return (model?.access_grants ?? []).some(
@@ -114,7 +126,12 @@
 		return 'text-gray-500 dark:text-gray-400';
 	};
 
+	$: defaultModelIdSet = new Set(defaultModelIds);
+	$: defaultPinnedModelIdSet = new Set(defaultPinnedModelIds);
+
 	$: if (models) {
+		const modelOrder = new Map(modelOrderList.map((id, idx) => [id, idx]));
+
 		filteredModels = models
 			.filter((m) => searchValue === '' || m.name.toLowerCase().includes(searchValue.toLowerCase()))
 			.filter((m) => {
@@ -124,18 +141,26 @@
 				if (viewOption === 'hidden') return m?.meta?.hidden === true;
 				if (viewOption === 'public') return isPublicModel(m);
 				if (viewOption === 'private') return !isPublicModel(m);
+				if (viewOption === 'selected') return defaultModelIdSet.has(m.id);
+				if (viewOption === 'pinned') return defaultPinnedModelIdSet.has(m.id);
 				return true; // All
 			})
 			.sort((a, b) => {
+				const orderA = modelOrder.get(a.id) ?? Number.MAX_SAFE_INTEGER;
+				const orderB = modelOrder.get(b.id) ?? Number.MAX_SAFE_INTEGER;
+
+				if (orderA !== orderB) {
+					return orderA - orderB;
+				}
+
 				return (a?.name ?? a?.id ?? '').localeCompare(b?.name ?? b?.id ?? '');
 			});
 	}
 
 	let searchValue = '';
+	let canReorderModels = false;
 
-	$: if (searchValue || viewOption !== undefined) {
-		currentPage = 1;
-	}
+	$: canReorderModels = searchValue === '' && viewOption === '' && selectedTag === '';
 
 	const enableAllHandler = async () => {
 		const modelsToEnable = filteredModels.filter((m) => !(m.is_active ?? true));
@@ -204,6 +229,7 @@
 	};
 
 	const downloadModels = async (models) => {
+		models = await Promise.all(models.map(getFullModel));
 		let blob = new Blob([JSON.stringify(models)], {
 			type: 'application/json'
 		});
@@ -212,6 +238,13 @@
 
 	const init = async () => {
 		models = null;
+
+		modelsConfig = await getModelsConfig(localStorage.token);
+		modelOrderList = modelsConfig?.MODEL_ORDER_LIST ?? [];
+		defaultModelIds = (modelsConfig?.DEFAULT_MODELS ?? '').split(',').filter((id) => id);
+		defaultPinnedModelIds = (modelsConfig?.DEFAULT_PINNED_MODELS ?? '')
+			.split(',')
+			.filter((id) => id);
 
 		tags = await getBaseModelTags(localStorage.token);
 		if (selectedTag && !tags.includes(selectedTag)) {
@@ -243,6 +276,15 @@
 				}
 			});
 
+		modelOrderList = [
+			...modelOrderList.filter((id) => models.some((model) => model.id === id)),
+			...models
+				.map((model) => model.id)
+				.filter((id) => !modelOrderList.includes(id))
+				.sort((a, b) => a.localeCompare(b))
+		];
+		modelOrderDirty = false;
+
 		_models.set(
 			await getModels(
 				localStorage.token,
@@ -250,6 +292,140 @@
 			)
 		);
 	};
+
+	const saveModelOrder = async (orderedModelIds: string[]) => {
+		savingModelOrder = true;
+
+		const res = await setModelsConfig(localStorage.token, {
+			DEFAULT_MODELS: defaultModelIds.join(','),
+			DEFAULT_PINNED_MODELS: defaultPinnedModelIds.join(','),
+			MODEL_ORDER_LIST: orderedModelIds,
+			DEFAULT_MODEL_METADATA: modelsConfig?.DEFAULT_MODEL_METADATA ?? null,
+			DEFAULT_MODEL_PARAMS: modelsConfig?.DEFAULT_MODEL_PARAMS ?? null
+		}).catch((error) => {
+			toast.error(`${error}`);
+			return null;
+		});
+
+		if (res) {
+			modelsConfig = res;
+			modelOrderDirty = false;
+			toast.success($i18n.t('Model order saved successfully'));
+			_models.set(
+				await getModels(
+					localStorage.token,
+					$config?.features?.enable_direct_connections && ($settings?.directConnections ?? null)
+				)
+			);
+		}
+
+		savingModelOrder = false;
+	};
+
+	const saveModelDefaults = async (
+		nextDefaultModelIds: string[],
+		nextDefaultPinnedModelIds: string[],
+		successMessage: string
+	) => {
+		const previousDefaultModelIds = defaultModelIds;
+		const previousDefaultPinnedModelIds = defaultPinnedModelIds;
+
+		defaultModelIds = nextDefaultModelIds;
+		defaultPinnedModelIds = nextDefaultPinnedModelIds;
+
+		const res = await setModelsConfig(localStorage.token, {
+			DEFAULT_MODELS: nextDefaultModelIds.join(','),
+			DEFAULT_PINNED_MODELS: nextDefaultPinnedModelIds.join(','),
+			MODEL_ORDER_LIST: modelsConfig?.MODEL_ORDER_LIST ?? [],
+			DEFAULT_MODEL_METADATA: modelsConfig?.DEFAULT_MODEL_METADATA ?? null,
+			DEFAULT_MODEL_PARAMS: modelsConfig?.DEFAULT_MODEL_PARAMS ?? null
+		}).catch((error) => {
+			toast.error(`${error}`);
+			return null;
+		});
+
+		if (res) {
+			modelsConfig = res;
+			toast.success(successMessage);
+		} else {
+			defaultModelIds = previousDefaultModelIds;
+			defaultPinnedModelIds = previousDefaultPinnedModelIds;
+		}
+	};
+
+	const toggleDefaultModelHandler = async (model) => {
+		const isSelected = defaultModelIdSet.has(model.id);
+		const nextDefaultModelIds = isSelected
+			? defaultModelIds.filter((id) => id !== model.id)
+			: [...new Set([...defaultModelIds, model.id])];
+
+		await saveModelDefaults(
+			nextDefaultModelIds,
+			defaultPinnedModelIds,
+			isSelected
+				? $i18n.t('Model removed from selected models')
+				: $i18n.t('Model added to selected models')
+		);
+	};
+
+	const toggleDefaultPinnedModelHandler = async (model) => {
+		const isPinned = defaultPinnedModelIdSet.has(model.id);
+		const nextDefaultPinnedModelIds = isPinned
+			? defaultPinnedModelIds.filter((id) => id !== model.id)
+			: [...new Set([...defaultPinnedModelIds, model.id])];
+
+		await saveModelDefaults(
+			defaultModelIds,
+			nextDefaultPinnedModelIds,
+			isPinned
+				? $i18n.t('Model removed from pinned models')
+				: $i18n.t('Model added to pinned models')
+		);
+	};
+
+	const positionChangeHandler = async (event) => {
+		const { oldIndex, newIndex, item } = event;
+
+		if (oldIndex === undefined || newIndex === undefined || oldIndex === newIndex) {
+			return;
+		}
+
+		const parent = item.parentNode;
+		const target = parent.children[oldIndex < newIndex ? oldIndex : oldIndex + 1];
+		parent.insertBefore(item, target);
+
+		const updatedModels = [...filteredModels];
+		const [movedModel] = updatedModels.splice(oldIndex, 1);
+		updatedModels.splice(newIndex, 0, movedModel);
+
+		const orderedIds = updatedModels.map((model) => model.id);
+		const orderedSet = new Set(orderedIds);
+
+		models = [...updatedModels, ...models.filter((model) => !orderedSet.has(model.id))];
+		modelOrderList = models.map((model) => model.id);
+		modelOrderDirty = true;
+	};
+
+	const initSortable = () => {
+		if (sortable) {
+			sortable.destroy();
+			sortable = null;
+		}
+
+		if (modelListElement && filteredModels.length > 0 && canReorderModels) {
+			sortable = new Sortable(modelListElement, {
+				animation: 150,
+				handle: '.model-item-handle',
+				onUpdate: positionChangeHandler
+			});
+		}
+	};
+
+	$: if (modelListElement && filteredModels) {
+		tick().then(() => {
+			initSortable();
+		});
+	}
 
 	const upsertModelHandler = async (model, overrides = {}, showToast = true) => {
 		model = { ...model, base_model_id: null, ...overrides };
@@ -309,22 +485,30 @@
 	};
 
 	const hideModelHandler = async (model) => {
-		model.meta = {
-			...model.meta,
-			hidden: !(model?.meta?.hidden ?? false)
+		const updatedModel = {
+			...model,
+			meta: {
+				...model.meta,
+				hidden: !(model?.meta?.hidden ?? false)
+			}
 		};
 
-		console.debug(model);
-
-		upsertModelHandler(model, { meta: model.meta }, false);
+		await upsertModelHandler(updatedModel, { meta: updatedModel.meta }, false);
+		models = models.map((model) => (model.id === updatedModel.id ? updatedModel : model));
+		_models.set(
+			await getModels(
+				localStorage.token,
+				$config?.features?.enable_direct_connections && ($settings?.directConnections ?? null)
+			)
+		);
 
 		toast.success(
-			model.meta.hidden
+			updatedModel.meta.hidden
 				? $i18n.t(`Model {{name}} is now hidden`, {
-						name: model.id
+						name: updatedModel.id
 					})
 				: $i18n.t(`Model {{name}} is now visible`, {
-						name: model.id
+						name: updatedModel.id
 					})
 		);
 	};
@@ -377,17 +561,25 @@
 		}
 	};
 
+	const getFullModel = async (model: any) =>
+		workspaceModels.some((workspaceModel) => workspaceModel.id === model.id)
+			? ((await getModelById(localStorage.token, model.id).catch(() => null)) ?? model)
+			: model;
+
 	const cloneHandler = async (model) => {
+		model = await getFullModel(model);
 		sessionStorage.model = JSON.stringify({
 			...model,
 			base_model_id: model.id,
 			id: `${model.id}-clone`,
 			name: `${model.name} (Clone)`
 		});
-		goto('/workspace/models/create');
+		showSettings.set(false);
+		await goto('/workspace/models/create');
 	};
 
 	const exportModelHandler = async (model) => {
+		model = await getFullModel(model);
 		let blob = new Blob([JSON.stringify([model])], {
 			type: 'application/json'
 		});
@@ -436,7 +628,26 @@
 			window.removeEventListener('blur', onBlur);
 		};
 	});
+
+	onDestroy(() => {
+		if (sortable) {
+			sortable.destroy();
+		}
+	});
 </script>
+
+<ConfirmDialog
+	title={$i18n.t('Reset All Models')}
+	message={$i18n.t('This will delete all models including custom models and cannot be undone.')}
+	bind:show={showResetModal}
+	onConfirm={async () => {
+		const res = await deleteAllModels(localStorage.token);
+		if (res) {
+			toast.success($i18n.t('All models deleted successfully'));
+			await init();
+		}
+	}}
+/>
 
 <ModelSettingsModal bind:show={showConfigModal} initHandler={init} />
 <ManageModelsModal bind:show={showManageModal} />
@@ -552,7 +763,6 @@
 										return { value: tag, label: tag };
 									})}
 									onChange={async () => {
-										currentPage = 1;
 										await init();
 									}}
 								/>
@@ -606,6 +816,17 @@
 									>
 										<Wrench className="size-3.5" />
 										<div class="flex items-center">{$i18n.t('Manage')}</div>
+									</button>
+
+									<button
+										class="flex h-[1.6875rem] w-full cursor-pointer select-none items-center gap-2 rounded-xl bg-transparent px-2 text-[13px] hover:text-gray-900 dark:hover:text-gray-100"
+										type="button"
+										on:click={() => {
+											showResetModal = true;
+										}}
+									>
+										<GarbageBin className="size-3.5" />
+										<div class="flex items-center">{$i18n.t('Reset')}</div>
 									</button>
 
 									<hr class="mx-1 my-0.5 border-gray-100 dark:border-gray-800" />
@@ -666,9 +887,10 @@
 						? 'overflow-y-auto scrollbar-hover pr-1.5'
 						: 'overflow-hidden'}"
 					id="model-list"
+					bind:this={modelListElement}
 				>
 					{#if filteredModels.length > 0}
-						{#each filteredModels.slice((currentPage - 1) * perPage, currentPage * perPage) as model, modelIdx (`${model.id}-${modelIdx}`)}
+						{#each filteredModels as model, modelIdx (`${model.id}-${modelIdx}`)}
 							<div
 								class="flex cursor-pointer transition w-full px-2 py-1 rounded-xl hover:bg-gray-50/70 dark:hover:bg-gray-850/50 {model
 									?.meta?.hidden
@@ -676,6 +898,20 @@
 									: ''}"
 								id="model-item-{model.id}"
 							>
+								<div class="self-center pr-1 text-gray-400 dark:text-gray-600">
+									<Tooltip
+										content={canReorderModels
+											? $i18n.t('Drag to reorder')
+											: $i18n.t('Clear filters to reorder')}
+									>
+										<EllipsisVertical
+											className="size-4 {canReorderModels
+												? 'cursor-move model-item-handle'
+												: 'opacity-40'}"
+										/>
+									</Tooltip>
+								</div>
+
 								<button
 									class="flex group/item gap-2.5 w-full min-w-0 flex-1 text-left cursor-pointer"
 									type="button"
@@ -732,6 +968,22 @@
 												>
 													{modelAccessLabel(model)}
 												</span>
+
+												{#if defaultModelIdSet.has(model.id)}
+													<span
+														class="shrink-0 text-[11px] font-normal leading-4 text-gray-500 dark:text-gray-400"
+													>
+														{$i18n.t('Selected')}
+													</span>
+												{/if}
+
+												{#if defaultPinnedModelIdSet.has(model.id)}
+													<span
+														class="shrink-0 text-[11px] font-normal leading-4 text-gray-500 dark:text-gray-400"
+													>
+														{$i18n.t('Pinned')}
+													</span>
+												{/if}
 											</div>
 										</Tooltip>
 									</div>
@@ -790,6 +1042,14 @@
 										privacyHandler={() => {
 											toggleModelPrivacyHandler(model);
 										}}
+										isDefaultSelected={defaultModelIdSet.has(model.id)}
+										isDefaultPinned={defaultPinnedModelIdSet.has(model.id)}
+										defaultSelectedHandler={() => {
+											toggleDefaultModelHandler(model);
+										}}
+										defaultPinnedHandler={() => {
+											toggleDefaultPinnedModelHandler(model);
+										}}
 										pinModelHandler={() => {
 											pinModelHandler(model.id);
 										}}
@@ -805,7 +1065,7 @@
 											class="self-center w-fit text-sm p-1.5 dark:text-gray-300 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 rounded-xl"
 											type="button"
 										>
-											<EllipsisHorizontal className="size-5" />
+											<EllipsisHorizontal className="size-3.5" />
 										</button>
 									</ModelMenu>
 
@@ -841,9 +1101,23 @@
 					{/if}
 				</div>
 
-				{#if filteredModels.length > perPage}
-					<Pagination bind:page={currentPage} count={filteredModels.length} {perPage} />
-				{/if}
+				<div class="flex justify-end pt-6 text-sm font-normal">
+					<button
+						class="flex items-center gap-2 px-3.5 py-1.5 text-sm font-normal bg-black hover:bg-gray-900 text-white dark:bg-white dark:text-black dark:hover:bg-gray-100 transition rounded-full disabled:cursor-not-allowed disabled:opacity-40"
+						type="button"
+						disabled={!modelOrderDirty || savingModelOrder}
+						on:click={async () => {
+							await saveModelOrder(modelOrderList);
+						}}
+					>
+						{$i18n.t('Save')}
+						{#if savingModelOrder}
+							<span class="shrink-0">
+								<Spinner />
+							</span>
+						{/if}
+					</button>
+				</div>
 			</div>
 		</div>
 	{:else}
