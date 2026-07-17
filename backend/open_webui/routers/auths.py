@@ -83,6 +83,7 @@ log = logging.getLogger(__name__)
 # Forgive us our failed attempts, as we forgive those
 # who exceed their allotted rate against this gate.
 signin_rate_limiter = RateLimiter(redis_client=get_redis_client(), limit=5 * 3, window=60 * 3)
+trusted_header_signup_lock = asyncio.Lock()
 
 ADMIN_CONFIG_KEYS = {
     'SHOW_ADMIN_DETAILS': 'auth.admin.show',
@@ -681,14 +682,16 @@ async def signin(
                 pass
 
         if not await Users.get_user_by_email(email.lower(), db=db):
-            await signup_handler(
-                request,
-                email,
-                str(uuid.uuid4()),
-                name,
-                db=db,
-                source='trusted_header',
-            )
+            async with trusted_header_signup_lock:
+                if not await Users.get_user_by_email(email.lower(), db=db):
+                    await signup_handler(
+                        request,
+                        email,
+                        str(uuid.uuid4()),
+                        name,
+                        db=db,
+                        source='trusted_header',
+                    )
 
         user = await Auths.authenticate_user_by_email(email, db=db)
         if user:
