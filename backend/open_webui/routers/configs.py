@@ -42,6 +42,7 @@ log = logging.getLogger(__name__)
 CONNECTIONS_CONFIG_KEYS = {
     'ENABLE_DIRECT_CONNECTIONS': 'direct.enable',
     'ENABLE_BASE_MODELS_CACHE': 'models.base_models_cache',
+    'MODELS_SYNC_INTERVAL': 'models.sync_interval',
 }
 CODE_EXECUTION_CONFIG_KEYS = {
     'ENABLE_CODE_EXECUTION': 'code_execution.enable',
@@ -134,6 +135,7 @@ async def get_config_namespace(namespace: str, user=Depends(get_admin_user)):
 class ConnectionsConfigForm(BaseModel):
     ENABLE_DIRECT_CONNECTIONS: bool
     ENABLE_BASE_MODELS_CACHE: bool
+    MODELS_SYNC_INTERVAL: int = 300
 
 
 @router.get('/connections', response_model=ConnectionsConfigForm)

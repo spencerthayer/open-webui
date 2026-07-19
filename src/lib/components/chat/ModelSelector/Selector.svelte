@@ -32,6 +32,7 @@
 	import ChevronDown from '$lib/components/icons/ChevronDown.svelte';
 	import Check from '$lib/components/icons/Check.svelte';
 	import Search from '$lib/components/icons/Search.svelte';
+	import Refresh from '$lib/components/icons/Refresh.svelte';
 	import Tooltip from '$lib/components/common/Tooltip.svelte';
 	import Switch from '$lib/components/common/Switch.svelte';
 	import ChatBubbleOval from '$lib/components/icons/ChatBubbleOval.svelte';
@@ -91,6 +92,7 @@
 	let dropdownPosition = { top: 0, left: 0, maxHeight: undefined as number | undefined };
 	let positionFrame: number | undefined;
 	let settleTimers: number[] = [];
+	let refreshingModels = false;
 
 	const portal = (node: HTMLElement) => {
 		document.body.appendChild(node);
@@ -827,6 +829,34 @@
 									});
 								}}
 							/>
+
+							<Tooltip content={$i18n.t('Refresh models')}>
+								<button
+									type="button"
+									class="flex size-[1.375rem] shrink-0 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-50/40 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-800/40 dark:hover:text-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
+									disabled={refreshingModels}
+									on:click={async () => {
+										refreshingModels = true;
+										try {
+											models.set(
+												await getModels(
+													localStorage.token,
+													$config?.features?.enable_direct_connections &&
+														($settings?.directConnections ?? null)
+												)
+											);
+										} finally {
+											refreshingModels = false;
+										}
+									}}
+								>
+									{#if refreshingModels}
+										<Spinner className="size-3" />
+									{:else}
+										<Refresh className="size-3" strokeWidth="2" />
+									{/if}
+								</button>
+							</Tooltip>
 
 							{#if modelFilterItems.length > 0 || (multipleEnabled && items.length > 0)}
 								<div class="flex min-w-0 shrink-0 items-center gap-0.5">

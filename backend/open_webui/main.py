@@ -364,6 +364,10 @@ async def lifespan(app: FastAPI):
 
     asyncio.create_task(scheduler_worker_loop(app))
 
+    from open_webui.routers.openai import periodic_model_sync
+
+    asyncio.create_task(periodic_model_sync(app))
+
     if await Config.get('models.base_models_cache'):
         try:
             await get_all_models(

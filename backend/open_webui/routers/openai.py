@@ -32,6 +32,7 @@ from open_webui.env import (
     ENABLE_OPENAI_API_PASSTHROUGH,
     FORWARD_SESSION_INFO_HEADER_CHAT_ID,
     MODELS_CACHE_TTL,
+    MODELS_SYNC_INTERVAL,
 )
 from open_webui.internal.db import get_async_session
 from open_webui.models.access_grants import AccessGrants
@@ -58,6 +59,7 @@ from open_webui.utils.session_pool import (
 )
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.datastructures import Headers
 
 log = logging.getLogger(__name__)
 
@@ -720,6 +722,57 @@ async def get_all_models(request: Request, user: UserModel) -> dict[str, list]:
     return {'data': list(models.values())}
 
 
+async def periodic_model_sync(app):
+    """Background task that periodically refreshes models from all configured providers."""
+    if MODELS_SYNC_INTERVAL <= 0:
+        log.info('Periodic model sync disabled (MODELS_SYNC_INTERVAL <= 0)')
+        return
+
+    while True:
+        await asyncio.sleep(MODELS_SYNC_INTERVAL)
+        try:
+            log.info('Periodic model sync: refreshing models from providers')
+
+            # Clear all model caches to force a fresh fetch
+            await get_all_models.cache.clear()
+
+            # Reset base models so get_all_models re-fetches from providers
+            app.state.BASE_MODELS = []
+
+            # Build a mock Request to pass to get_all_models
+            mock_request = Request(
+                {
+                    'type': 'http',
+                    'asgi.version': '3.0',
+                    'asgi.spec_version': '2.0',
+                    'method': 'GET',
+                    'path': '/internal/model-sync',
+                    'query_string': b'',
+                    'headers': Headers({}).raw,
+                    'client': ('127.0.0.1', 12345),
+                    'server': ('127.0.0.1', 80),
+                    'scheme': 'http',
+                    'app': app,
+                }
+            )
+
+            old_model_ids = set(getattr(app.state, 'MODELS', {}) or {})
+            result = await get_all_models(mock_request, user=None)
+            new_model_ids = {m.get('id') for m in result if m.get('id')}
+
+            added = new_model_ids - old_model_ids
+            removed = old_model_ids - new_model_ids
+
+            if added:
+                log.info(f'Periodic model sync: new models discovered: {added}')
+            if removed:
+                log.info(f'Periodic model sync: models removed: {removed}')
+
+            log.info(f'Periodic model sync: updated {len(new_model_ids)} models')
+        except Exception as e:
+            log.error(f'Periodic model sync failed: {e}')
+
+
 @router.get('/models')
 @router.get('/models/{url_idx}')
 async def get_models(request: Request, url_idx: int | None = None, user=Depends(get_verified_user)):
@@ -802,6 +855,15 @@ async def get_models(request: Request, url_idx: int | None = None, user=Depends(
         models['data'] = await get_filtered_models(models, user)
 
     return models
+
+
+@router.post('/models/refresh')
+async def refresh_models(request: Request, user=Depends(get_admin_user)):
+    """Force an immediate refresh of models from all configured providers."""
+    await get_all_models.cache.clear()
+    request.app.state.BASE_MODELS = []
+    result = await get_all_models(request, user=user)
+    return result
 
 
 class ConnectionVerificationForm(BaseModel):
