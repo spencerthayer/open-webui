@@ -758,7 +758,15 @@ async def periodic_model_sync(app):
 
             old_model_ids = set(getattr(app.state, 'MODELS', {}) or {})
             result = await get_all_models(mock_request, user=None)
-            new_model_ids = {m.get('id') for m in result if m.get('id')}
+            model_list = result.get('data', [])
+            new_model_ids = {m.get('id') for m in model_list if m.get('id')}
+
+            # Update BASE_MODELS so the utils/models layer picks up fresh data
+            app.state.BASE_MODELS = model_list
+            # Update the merged MODELS dict used for chat routing
+            merged = {m['id']: m for m in model_list if m.get('id')}
+            if merged:
+                app.state.MODELS = merged
 
             added = new_model_ids - old_model_ids
             removed = old_model_ids - new_model_ids
@@ -855,15 +863,6 @@ async def get_models(request: Request, url_idx: int | None = None, user=Depends(
         models['data'] = await get_filtered_models(models, user)
 
     return models
-
-
-@router.post('/models/refresh')
-async def refresh_models(request: Request, user=Depends(get_admin_user)):
-    """Force an immediate refresh of models from all configured providers."""
-    await get_all_models.cache.clear()
-    request.app.state.BASE_MODELS = []
-    result = await get_all_models(request, user=user)
-    return result
 
 
 class ConnectionVerificationForm(BaseModel):
