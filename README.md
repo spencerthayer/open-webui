@@ -12,6 +12,19 @@
 
 ![Open WebUI Banner](./banner.png)
 
+---
+
+> [!IMPORTANT]
+> **This is a personal fork maintained by [Spencer Thayer](https://github.com/spencerthayer).**
+>
+> This repository contains my personal build of Open WebUI with updates and customizations tailored to my preferences. Due to the difficulty of getting pull requests merged upstream, I've given up on trying to contribute to the source project. I respect Open WebUI as a project, but I don't have the time to wait in limbo with them forever.
+>
+> **In my opinion, this is a superior version of the upstream source.** People should be using the **`build` branch**. But I don't really care — this fork exists primarily for my own personal use.
+>
+> If you're here, you're welcome to use it. Just know this isn't the official project and I'm not interested in maintaining it for others.
+
+---
+
 **Open WebUI is an [extensible](https://docs.openwebui.com/features/extensibility/plugin), feature-rich, and user-friendly self-hosted AI platform designed to operate entirely offline.** It supports various LLM runners like **Ollama** and **OpenAI-compatible APIs**, with **built-in inference engine** for RAG, making it a **powerful AI deployment solution**.
 
 Passionate about open-source AI? [Join our team →](https://careers.openwebui.com/)
