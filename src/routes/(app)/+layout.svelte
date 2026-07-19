@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { toast } from 'svelte-sonner';
+	import { get } from 'svelte/store';
 	import { onMount, onDestroy, tick, getContext } from 'svelte';
 	import { openDB, deleteDB } from 'idb';
 	import fileSaver from 'file-saver';
@@ -115,10 +116,12 @@
 	};
 
 	const setModels = async () => {
+		const c = get(config);
+		const s = get(settings);
 		models.set(
 			await getModels(
 				localStorage.token,
-				$config?.features?.enable_direct_connections ? ($settings?.directConnections ?? null) : null
+				c?.features?.enable_direct_connections ? (s?.directConnections ?? null) : null
 			)
 		);
 	};
@@ -372,11 +375,13 @@
 		const MODEL_REFRESH_INTERVAL = 5 * 60 * 1000; // 5 minutes
 
 		const refreshModelsList = async () => {
+			const c = get(config);
+			const s = get(settings);
 			models.set(
 				await getModels(
 					localStorage.token,
-					$config?.features?.enable_direct_connections
-						? ($settings?.directConnections ?? null)
+					c?.features?.enable_direct_connections
+						? (s?.directConnections ?? null)
 						: null
 				)
 			);
