@@ -878,6 +878,17 @@ async def get_base_models(request: Request, user=Depends(get_admin_user)):
     return {'data': models}
 
 
+@app.post('/api/models/refresh')
+async def refresh_models(request: Request, user=Depends(get_admin_user)):
+    """Force an immediate refresh of models from all configured providers."""
+    from open_webui.routers.openai import get_all_models as get_openai_all_models
+
+    await get_openai_all_models.cache.clear()
+    request.app.state.BASE_MODELS = []
+    result = await get_all_models(request, refresh=True, user=user)
+    return {'data': result}
+
+
 class ModelUnloadForm(BaseModel):
     model: str
 

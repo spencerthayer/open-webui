@@ -175,7 +175,7 @@ export const getModels = async (
 export const refreshModels = async (token: string = '') => {
 	let error = null;
 
-	const res = await fetch(`${WEBUI_BASE_URL}/openai/api/v1/models/refresh`, {
+	const res = await fetch(`${WEBUI_BASE_URL}/api/models/refresh`, {
 		method: 'POST',
 		headers: {
 			Accept: 'application/json',
