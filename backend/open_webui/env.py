@@ -925,6 +925,11 @@ else:
     except Exception:
         MODELS_CACHE_TTL = 1
 
+try:
+    MODELS_SYNC_INTERVAL = int(os.getenv('MODELS_SYNC_INTERVAL', '300'))
+except (ValueError, TypeError):
+    MODELS_SYNC_INTERVAL = 300
+
 
 ####################################
 # CHAT

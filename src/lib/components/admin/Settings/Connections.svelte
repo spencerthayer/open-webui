@@ -6,7 +6,7 @@
 
 	import { getOllamaConfig, updateOllamaConfig } from '$lib/apis/ollama';
 	import { getOpenAIConfig, updateOpenAIConfig, getOpenAIModels } from '$lib/apis/openai';
-	import { getModels as _getModels, getBackendConfig } from '$lib/apis';
+	import { getModels as _getModels, getBackendConfig, refreshModels } from '$lib/apis';
 	import { getConnectionsConfig, setConnectionsConfig } from '$lib/apis/configs';
 
 	import { config, models, settings, user } from '$lib/stores';
@@ -50,6 +50,20 @@
 	let pipelineUrls: Record<string, boolean> = {};
 	let showAddOpenAIConnectionModal = false;
 	let showAddOllamaConnectionModal = false;
+	let refreshingModels = false;
+
+	const refreshModelsHandler = async () => {
+		refreshingModels = true;
+		try {
+			await refreshModels(localStorage.token);
+			models.set(await getModels());
+			toast.success($i18n.t('Models refreshed'));
+		} catch (e) {
+			toast.error(`${e}`);
+		} finally {
+			refreshingModels = false;
+		}
+	};
 
 	const updateOpenAIHandler = async () => {
 		if (ENABLE_OPENAI_API !== null) {
@@ -374,6 +388,47 @@
 						}}
 					/>
 				</AdminSettingRow>
+
+				<AdminSettingRow
+					label={$i18n.t('Model Sync Interval (seconds)')}
+					description={$i18n.t(
+						'How often to automatically refresh models from providers. Set to 0 to disable background sync.'
+					)}
+				>
+					<div class="flex items-center gap-2">
+						<input
+							type="number"
+							bind:value={connectionsConfig.MODELS_SYNC_INTERVAL}
+							min="0"
+							step="60"
+							class="h-7 w-20 rounded-lg border border-gray-100/50 bg-gray-50/40 px-2 text-xs text-gray-700 outline-hidden transition-colors focus:border-blue-400 dark:border-white/[0.04] dark:bg-white/[0.03] dark:text-gray-300 dark:focus:border-blue-500"
+							on:change={async () => {
+								updateConnectionsHandler();
+							}}
+						/>
+						<span class="text-[0.6875rem] text-gray-400 dark:text-gray-600">
+							{$i18n.t('seconds')}
+						</span>
+					</div>
+				</AdminSettingRow>
+
+				<div class="flex items-center justify-between gap-4">
+					<div class="min-w-0 text-xs text-gray-600 dark:text-gray-400">
+						{$i18n.t('Refresh Models Now')}
+					</div>
+					<button
+						type="button"
+						class="shrink-0 px-3 py-1.5 text-xs font-normal bg-black hover:bg-gray-900 text-white dark:bg-white dark:text-black dark:hover:bg-gray-100 transition rounded-full disabled:opacity-50 disabled:cursor-not-allowed"
+						disabled={refreshingModels}
+						on:click={refreshModelsHandler}
+					>
+						{#if refreshingModels}
+							<Spinner className="size-3" />
+						{:else}
+							{$i18n.t('Refresh')}
+						{/if}
+					</button>
+				</div>
 			</AdminSettingSection>
 		{:else}
 			<div class="flex h-full justify-center">

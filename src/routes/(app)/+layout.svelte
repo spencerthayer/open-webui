@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { toast } from 'svelte-sonner';
-	import { onMount, tick, getContext } from 'svelte';
+	import { onMount, onDestroy, tick, getContext } from 'svelte';
 	import { openDB, deleteDB } from 'idb';
 	import fileSaver from 'file-saver';
 	const { saveAs } = fileSaver;
@@ -364,6 +364,37 @@
 			} else {
 				localStorage.selectedTerminalId = value;
 			}
+		});
+
+		// Periodic model refresh
+		let lastModelRefresh = Date.now();
+		const MODEL_REFRESH_INTERVAL = 5 * 60 * 1000; // 5 minutes
+
+		const refreshModelsList = async () => {
+			models.set(
+				await getModels(
+					localStorage.token,
+					$config?.features?.enable_direct_connections
+						? ($settings?.directConnections ?? null)
+						: null
+				)
+			);
+			lastModelRefresh = Date.now();
+		};
+
+		const modelRefreshInterval = setInterval(refreshModelsList, MODEL_REFRESH_INTERVAL);
+
+		const handleVisibilityChange = () => {
+			if (document.visibilityState === 'visible' && Date.now() - lastModelRefresh > 60_000) {
+				refreshModelsList();
+			}
+		};
+		document.addEventListener('visibilitychange', handleVisibilityChange);
+
+		// Cleanup on component destroy
+		onDestroy(() => {
+			clearInterval(modelRefreshInterval);
+			document.removeEventListener('visibilitychange', handleVisibilityChange);
 		});
 
 		await tick();
