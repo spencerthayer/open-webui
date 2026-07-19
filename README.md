@@ -19,7 +19,7 @@
 >
 > This repository contains my personal build of Open WebUI with updates and customizations tailored to my preferences. Due to the difficulty of getting pull requests merged upstream, I've given up on trying to contribute to the source project. I respect Open WebUI as a project, but I don't have the time to wait in limbo with them forever.
 >
-> **In my opinion, this is a superior version of the upstream source.** People should be using the **`build` branch**. But I don't really care — this fork exists primarily for my own personal use.
+> **In my opinion, this is a superior version of the upstream source.** People should be using the **[`build` branch](https://github.com/spencerthayer/open-webui/tree/build)**. But I don't really care — this fork exists primarily for my own personal use.
 >
 > If you're here, you're welcome to use it. Just know this isn't the official project and I'm not interested in maintaining it for others.
 
