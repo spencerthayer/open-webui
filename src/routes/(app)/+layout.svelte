@@ -238,10 +238,11 @@
 			checkLocalDBChats(),
 			setBanners().catch((e) => console.error('Failed to load banners:', e)),
 			setTools().catch((e) => console.error('Failed to load tools:', e)),
-			setUserSettings(async () => {
-				await setModels().catch((e) => console.error('Failed to load models:', e));
-			}).catch((e) => console.error('Failed to load user settings:', e))
+			setUserSettings().catch((e) => console.error('Failed to load user settings:', e))
 		]);
+
+		// Load models in the background — don't block page render on provider fetches.
+		setModels().catch((e) => console.error('Failed to load models:', e));
 
 		// Tool servers can be slow or unreachable; they are not needed to initialize chat.
 		setToolServers().catch((e) => console.error('Failed to load tool servers:', e));
