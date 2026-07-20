@@ -38,6 +38,7 @@
 	import ChatBubbleOval from '$lib/components/icons/ChatBubbleOval.svelte';
 	import Keyframes from '$lib/components/icons/Keyframes.svelte';
 	import TagSelector from '$lib/components/workspace/common/TagSelector.svelte';
+	import Select from '$lib/components/common/Select.svelte';
 
 	import ModelItem from './ModelItem.svelte';
 	import {
@@ -266,7 +267,7 @@
 	let selectedFilter = '';
 	let modelFilterItems = [];
 
-	let selectedSort: 'popular' | 'alpha-asc' | 'alpha-desc' | 'newest' = 'popular';
+	let selectedSort: 'popular' | 'alpha-asc' | 'alpha-desc' | 'newest' | 'rated' = 'popular';
 	let showFreeOnly = false;
 
 	const isModelFree = (item) => {
@@ -278,6 +279,12 @@
 		return false;
 	};
 
+	const getModelElo = (model: any): number => {
+		const benchmarks = model?.benchmarks;
+		if (!benchmarks?.design_arena?.length) return -1;
+		return Math.max(...benchmarks.design_arena.map((b: any) => b.elo ?? 0));
+	};
+
 	const sortItems = (items: any[], sort: string) => {
 		const sorted = [...items];
 		switch (sort) {
@@ -287,11 +294,21 @@
 				return sorted.sort((a, b) => (b.label ?? b.value ?? '').localeCompare(a.label ?? a.value ?? ''));
 			case 'newest':
 				return sorted.sort((a, b) => (b.model?.created ?? 0) - (a.model?.created ?? 0));
+			case 'rated':
+				return sorted.sort((a, b) => getModelElo(b.model) - getModelElo(a.model));
 			case 'popular':
 			default:
 				return sorted;
 		}
 	};
+
+	const sortOptions = [
+		{ value: 'popular', label: 'Popular' },
+		{ value: 'rated', label: 'Rated' },
+		{ value: 'alpha-asc', label: 'A→Z' },
+		{ value: 'alpha-desc', label: 'Z→A' },
+		{ value: 'newest', label: 'Newest' }
+	];
 
 	let ollamaVersion = null;
 	let selectedModelIdx = 0;
@@ -896,16 +913,14 @@
 							</Tooltip>
 
 							<div class="flex shrink-0 items-center gap-0.5">
-								<select
-									class="appearance-none bg-transparent text-[11px] font-normal text-gray-400 outline-hidden cursor-pointer hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 rounded-lg px-1 py-0 h-[1.375rem] hover:bg-gray-50/40 dark:hover:bg-gray-800/40"
+								<Select
 									bind:value={selectedSort}
-									aria-label={$i18n.t('Sort models')}
-								>
-									<option value="popular">{$i18n.t('Popular')}</option>
-									<option value="alpha-asc">{$i18n.t('A→Z')}</option>
-									<option value="alpha-desc">{$i18n.t('Z→A')}</option>
-									<option value="newest">{$i18n.t('Newest')}</option>
-								</select>
+									items={sortOptions}
+									align="end"
+									triggerClass="relative flex h-[1.375rem] items-center gap-0.5 rounded-lg bg-transparent px-1.5 text-[11px] font-normal text-gray-400 transition-colors duration-100 hover:bg-gray-50/40 hover:text-gray-600 dark:text-gray-500 dark:hover:bg-gray-800/40 dark:hover:text-gray-300"
+									itemClass="flex h-[1.6875rem] w-full cursor-pointer items-center gap-2 rounded-xl bg-transparent px-2 text-[13px] hover:bg-gray-50/40 hover:text-gray-900 dark:hover:bg-gray-800/40 dark:hover:text-gray-100"
+									contentClass="min-w-[100px] model-selector-child-menu"
+								/>
 
 								{#if hasFreeModels}
 									<Tooltip content={$i18n.t('Show free models only')}>
