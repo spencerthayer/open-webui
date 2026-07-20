@@ -192,8 +192,6 @@
 		show = !show;
 		if (show) {
 			searchValue = '';
-			selectedSort = 'popular';
-			showFreeOnly = false;
 			listScrollTop = 0;
 			resetView();
 			updatePosition();
@@ -267,7 +265,18 @@
 	let selectedFilter = '';
 	let modelFilterItems = [];
 
-	let selectedSort: 'popular' | 'alpha-asc' | 'alpha-desc' | 'newest' | 'rated' = 'popular';
+	const SORT_STORAGE_KEY = 'modelSelectorSort';
+	const VALID_SORTS = ['popular', 'rated', 'price-asc', 'price-desc', 'alpha-asc', 'alpha-desc', 'newest'];
+
+	const getStoredSort = (): typeof selectedSort => {
+		try {
+			const stored = localStorage.getItem(SORT_STORAGE_KEY);
+			if (stored && VALID_SORTS.includes(stored)) return stored as typeof selectedSort;
+		} catch {}
+		return 'popular';
+	};
+
+	let selectedSort = getStoredSort();
 	let showFreeOnly = false;
 
 	const isModelFree = (item) => {
@@ -285,6 +294,15 @@
 		return Math.max(...benchmarks.design_arena.map((b: any) => b.elo ?? 0));
 	};
 
+	const getModelPrice = (model: any): number => {
+		const pricing = model?.pricing;
+		if (!pricing) return -1;
+		const prompt = parseFloat(pricing.prompt ?? '');
+		const completion = parseFloat(pricing.completion ?? '');
+		if (isNaN(prompt) && isNaN(completion)) return -1;
+		return (isNaN(prompt) ? 0 : prompt) + (isNaN(completion) ? 0 : completion);
+	};
+
 	const sortItems = (items: any[], sort: string) => {
 		const sorted = [...items];
 		switch (sort) {
@@ -296,6 +314,24 @@
 				return sorted.sort((a, b) => (b.model?.created ?? 0) - (a.model?.created ?? 0));
 			case 'rated':
 				return sorted.sort((a, b) => getModelElo(b.model) - getModelElo(a.model));
+			case 'price-asc':
+				return sorted.sort((a, b) => {
+					const pa = getModelPrice(a.model);
+					const pb = getModelPrice(b.model);
+					if (pa === -1 && pb === -1) return 0;
+					if (pa === -1) return 1;
+					if (pb === -1) return -1;
+					return pa - pb;
+				});
+			case 'price-desc':
+				return sorted.sort((a, b) => {
+					const pa = getModelPrice(a.model);
+					const pb = getModelPrice(b.model);
+					if (pa === -1 && pb === -1) return 0;
+					if (pa === -1) return 1;
+					if (pb === -1) return -1;
+					return pb - pa;
+				});
 			case 'popular':
 			default:
 				return sorted;
@@ -305,10 +341,18 @@
 	const sortOptions = [
 		{ value: 'popular', label: 'Popular' },
 		{ value: 'rated', label: 'Rated' },
-		{ value: 'alpha-asc', label: 'A→Z' },
-		{ value: 'alpha-desc', label: 'Z→A' },
+		{ value: 'price-asc', label: '$ Low → High' },
+		{ value: 'price-desc', label: '$ High → Low' },
+		{ value: 'alpha-asc', label: 'A → Z' },
+		{ value: 'alpha-desc', label: 'Z → A' },
 		{ value: 'newest', label: 'Newest' }
 	];
+
+	$: if (typeof localStorage !== 'undefined') {
+		try {
+			localStorage.setItem(SORT_STORAGE_KEY, selectedSort);
+		} catch {}
+	}
 
 	let ollamaVersion = null;
 	let selectedModelIdx = 0;
