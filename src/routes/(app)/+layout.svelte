@@ -53,11 +53,18 @@
 	const i18n = getContext('i18n');
 
 	let loaded = false;
+	let modelRefreshInterval: ReturnType<typeof setInterval> | null = null;
+	let handleVisibilityChange: (() => void) | null = null;
 	let DB = null;
 	let localDBChats = [];
 
 	let version;
 	let handledSettingsUrl = '';
+
+	onDestroy(() => {
+		if (modelRefreshInterval) clearInterval(modelRefreshInterval);
+		if (handleVisibilityChange) document.removeEventListener('visibilitychange', handleVisibilityChange);
+	});
 
 	const clearChatInputStorage = () => {
 		const chatInputKeys = Object.keys(localStorage).filter((key) => key.startsWith('chat-input'));
@@ -388,20 +395,14 @@
 			lastModelRefresh = Date.now();
 		};
 
-		const modelRefreshInterval = setInterval(refreshModelsList, MODEL_REFRESH_INTERVAL);
+		modelRefreshInterval = setInterval(refreshModelsList, MODEL_REFRESH_INTERVAL);
 
-		const handleVisibilityChange = () => {
+		handleVisibilityChange = () => {
 			if (document.visibilityState === 'visible' && Date.now() - lastModelRefresh > 60_000) {
 				refreshModelsList();
 			}
 		};
 		document.addEventListener('visibilitychange', handleVisibilityChange);
-
-		// Cleanup on component destroy
-		onDestroy(() => {
-			clearInterval(modelRefreshInterval);
-			document.removeEventListener('visibilitychange', handleVisibilityChange);
-		});
 
 		await tick();
 
