@@ -30,6 +30,7 @@
 	export let pinModelHandler: (modelId: string) => void = () => {};
 	export let deleteModelHandler: (model: any) => void = () => {};
 	export let selectionOnly = false;
+	export let isFree = false;
 
 	export let onClick: () => void = () => {};
 
@@ -168,10 +169,18 @@
 								<Tag />
 							</div>
 						</Tooltip>
-					{/key}
-				{/if}
+			{/key}
+			{/if}
 
-				{#if item.model?.direct}
+			{#if isFree}
+				<Tooltip content={$i18n.t('Free')}>
+					<div class="translate-y-[1px]">
+						<Check className="size-3" />
+					</div>
+				</Tooltip>
+			{/if}
+
+			{#if item.model?.direct}
 					<Tooltip content={`${$i18n.t('Direct')}`}>
 						<div class="translate-y-[1px]">
 							<svg

@@ -191,6 +191,8 @@
 		show = !show;
 		if (show) {
 			searchValue = '';
+			selectedSort = 'popular';
+			showFreeOnly = false;
 			listScrollTop = 0;
 			resetView();
 			updatePosition();
@@ -263,6 +265,33 @@
 	let selectedConnectionType = '';
 	let selectedFilter = '';
 	let modelFilterItems = [];
+
+	let selectedSort: 'popular' | 'alpha-asc' | 'alpha-desc' | 'newest' = 'popular';
+	let showFreeOnly = false;
+
+	const isModelFree = (item) => {
+		if (item.value?.endsWith(':free')) return true;
+		const pricing = item.model?.pricing;
+		if (pricing && typeof pricing.prompt === 'string' && typeof pricing.completion === 'string') {
+			return pricing.prompt === '0' && pricing.completion === '0';
+		}
+		return false;
+	};
+
+	const sortItems = (items: any[], sort: string) => {
+		const sorted = [...items];
+		switch (sort) {
+			case 'alpha-asc':
+				return sorted.sort((a, b) => (a.label ?? a.value ?? '').localeCompare(b.label ?? b.value ?? ''));
+			case 'alpha-desc':
+				return sorted.sort((a, b) => (b.label ?? b.value ?? '').localeCompare(a.label ?? a.value ?? ''));
+			case 'newest':
+				return sorted.sort((a, b) => (b.model?.created ?? 0) - (a.model?.created ?? 0));
+			case 'popular':
+			default:
+				return sorted;
+		}
+	};
 
 	let ollamaVersion = null;
 	let selectedModelIdx = 0;
@@ -350,12 +379,18 @@
 							return item.model?.direct;
 						}
 					})
-	).filter((item) => includeHidden || !(item.model?.info?.meta?.hidden ?? false));
+	)
+		.filter((item) => includeHidden || !(item.model?.info?.meta?.hidden ?? false))
+		.filter((item) => !showFreeOnly || isModelFree(item));
+
+	$: sortedItems = sortItems(filteredItems, selectedSort);
 
 	$: if (
 		selectedTag !== undefined ||
 		selectedConnectionType !== undefined ||
-		searchValue !== undefined
+		searchValue !== undefined ||
+		selectedSort !== undefined ||
+		showFreeOnly !== undefined
 	) {
 		resetView();
 	}
@@ -372,6 +407,8 @@
 			: []),
 		...tags.map((tag) => ({ value: `tag:${tag}`, label: tag }))
 	];
+
+	$: hasFreeModels = items.some((item) => isModelFree(item));
 
 	$: selectedFilter = selectedConnectionType
 		? `connection:${selectedConnectionType}`
@@ -395,7 +432,7 @@
 	const resetView = async () => {
 		await tick();
 
-		const selectedInFiltered = filteredItems.findIndex((item) => item.value === primaryValue);
+		const selectedInFiltered = sortedItems.findIndex((item) => item.value === primaryValue);
 
 		if (selectedInFiltered >= 0) {
 			// The selected model is visible in the current filter
@@ -719,7 +756,7 @@
 
 	$: visibleStart = Math.max(0, Math.floor(listScrollTop / ITEM_HEIGHT) - OVERSCAN);
 	$: visibleEnd = Math.min(
-		filteredItems.length,
+		sortedItems.length,
 		Math.ceil((listScrollTop + listViewportHeight) / ITEM_HEIGHT) + OVERSCAN
 	);
 </script>
@@ -807,12 +844,12 @@
 								autocomplete="off"
 								aria-label={$i18n.t('Search In Models')}
 								on:keydown={(e) => {
-									if (e.code === 'Enter' && filteredItems.length > 0) {
-										selectItem(filteredItems[selectedModelIdx], selectedModelIdx);
+									if (e.code === 'Enter' && sortedItems.length > 0) {
+										selectItem(sortedItems[selectedModelIdx], selectedModelIdx);
 										return; // dont need to scroll on selection
 									} else if (e.code === 'ArrowDown') {
 										e.stopPropagation();
-										selectedModelIdx = Math.min(selectedModelIdx + 1, filteredItems.length - 1);
+										selectedModelIdx = Math.min(selectedModelIdx + 1, sortedItems.length - 1);
 									} else if (e.code === 'ArrowUp') {
 										e.stopPropagation();
 										selectedModelIdx = Math.max(selectedModelIdx - 1, 0);
@@ -858,6 +895,37 @@
 								</button>
 							</Tooltip>
 
+							<div class="flex shrink-0 items-center gap-0.5">
+								<select
+									class="appearance-none bg-transparent text-[11px] font-normal text-gray-400 outline-hidden cursor-pointer hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 rounded-lg px-1 py-0 h-[1.375rem] hover:bg-gray-50/40 dark:hover:bg-gray-800/40"
+									bind:value={selectedSort}
+									aria-label={$i18n.t('Sort models')}
+								>
+									<option value="popular">{$i18n.t('Popular')}</option>
+									<option value="alpha-asc">{$i18n.t('A→Z')}</option>
+									<option value="alpha-desc">{$i18n.t('Z→A')}</option>
+									<option value="newest">{$i18n.t('Newest')}</option>
+								</select>
+
+								{#if hasFreeModels}
+									<Tooltip content={$i18n.t('Show free models only')}>
+										<button
+											type="button"
+											class="flex h-[1.375rem] shrink-0 items-center gap-0.5 rounded-xl px-1.5 text-[11px] font-normal transition-colors duration-100 {showFreeOnly
+												? 'bg-gray-50 text-gray-700 dark:bg-gray-800/60 dark:text-gray-200'
+												: 'text-gray-400 hover:bg-gray-50/40 hover:text-gray-600 dark:text-gray-500 dark:hover:bg-gray-800/40 dark:hover:text-gray-300'}"
+											aria-label={$i18n.t('Free')}
+											aria-pressed={showFreeOnly}
+											on:click={() => {
+												showFreeOnly = !showFreeOnly;
+											}}
+										>
+											{$i18n.t('Free')}
+										</button>
+									</Tooltip>
+								{/if}
+							</div>
+
 							{#if modelFilterItems.length > 0 || (multipleEnabled && items.length > 0)}
 								<div class="flex min-w-0 shrink-0 items-center gap-0.5">
 									{#if multipleEnabled && items.length > 0}
@@ -896,7 +964,7 @@
 					{/if}
 
 					<div class="group relative flex min-h-0 flex-1 flex-col">
-						{#if filteredItems.length === 0}
+						{#if sortedItems.length === 0}
 							{#if items.length === 0 && $user?.role === 'admin'}
 								<div
 									class="my-2 flex w-full flex-col items-start justify-center px-4 py-3 text-start"
@@ -941,25 +1009,26 @@
 								}}
 							>
 								<div style="height: {visibleStart * ITEM_HEIGHT}px;" />
-								{#each filteredItems.slice(visibleStart, visibleEnd) as item, i (item.value)}
+								{#each sortedItems.slice(visibleStart, visibleEnd) as item, i (item.value)}
 									{@const index = visibleStart + i}
-								<ModelItem
-									{selectionOnly}
-									{selectedModelIdx}
-									{item}
-									{index}
-									value={primaryValue}
-									{pinModelHandler}
-									{unloadModelHandler}
-									{deleteModelHandler}
-									{compareEnabled}
-									{selectedValues}
-									onClick={() => {
-										selectItem(item, index);
-									}}
-								/>
+							<ModelItem
+								{selectionOnly}
+								{selectedModelIdx}
+								{item}
+								{index}
+								value={primaryValue}
+								isFree={isModelFree(item)}
+								{pinModelHandler}
+								{unloadModelHandler}
+								{deleteModelHandler}
+								{compareEnabled}
+								{selectedValues}
+								onClick={() => {
+									selectItem(item, index);
+								}}
+							/>
 								{/each}
-								<div style="height: {(filteredItems.length - visibleEnd) * ITEM_HEIGHT}px;" />
+								<div style="height: {(sortedItems.length - visibleEnd) * ITEM_HEIGHT}px;" />
 							</div>
 						{/if}
 
