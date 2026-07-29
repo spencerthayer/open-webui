@@ -27,7 +27,7 @@
 			</button>
 		</div>
 
-		<div class="flex flex-col md:flex-row w-full px-5 pb-4 md:space-x-4 dark:text-gray-200">
+		<div class="flex flex-col md:flex-row w-full px-4 pb-4 md:space-x-4 dark:text-gray-200">
 			<div class=" flex flex-col w-full sm:flex-row sm:justify-center sm:space-x-6">
 				<form
 					class="flex flex-col w-full"
@@ -43,6 +43,9 @@
 						</div>
 
 						<div class="my-2">
+							<!-- LICENSE covers this Open WebUI wordmark.
+							Do not alter, remove, obscure, or replace it except as LICENSE permits:
+							https://docs.openwebui.com/license. -->
 							{$i18n.t(
 								'Your entire contribution will go directly to the plugin developer; Open WebUI does not take any percentage. However, the chosen funding platform might have its own fees.'
 							)}

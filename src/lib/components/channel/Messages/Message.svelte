@@ -20,6 +20,8 @@
 	import { getMessageData } from '$lib/apis/channels';
 
 	import Markdown from '$lib/components/chat/Messages/Markdown.svelte';
+	import StructuredOutputRenderer from '$lib/components/chat/Messages/StructuredOutputRenderer.svelte';
+	import { buildOutputDisplayItems } from '$lib/components/chat/Messages/structuredOutput';
 	import ProfileImage from '$lib/components/chat/Messages/ProfileImage.svelte';
 	import Name from '$lib/components/chat/Messages/Name.svelte';
 	import ConfirmDialog from '$lib/components/common/ConfirmDialog.svelte';
@@ -149,6 +151,9 @@
 			await loadMessageData();
 		}
 	});
+
+	$: messageOutput = Array.isArray(message?.data?.output) ? message.data.output : [];
+	$: hasStructuredOutput = buildOutputDisplayItems(messageOutput).length > 0;
 </script>
 
 <ConfirmDialog
@@ -338,6 +343,9 @@
 									message.reply_to_message.meta.model_id}
 								class="size-4 ml-0.5 rounded-full object-cover"
 								on:error={(e) => {
+									// LICENSE covers this Open WebUI fallback logo.
+									// Do not alter, remove, obscure, or replace it except as LICENSE permits:
+									// https://docs.openwebui.com/license.
 									e.currentTarget.src = '/favicon.png';
 								}}
 							/>
@@ -381,6 +389,9 @@
 								alt={message.meta.model_name ?? message.meta.model_id}
 								class="size-8 translate-y-1 ml-0.5 object-cover rounded-full"
 								on:error={(e) => {
+									// LICENSE covers this Open WebUI fallback logo.
+									// Do not alter, remove, obscure, or replace it except as LICENSE permits:
+									// https://docs.openwebui.com/license.
 									e.currentTarget.src = '/favicon.png';
 								}}
 							/>
@@ -526,7 +537,14 @@
 						</div>
 					{:else}
 						<div class="min-w-full {pending ? 'opacity-50' : ''}">
-							{#if (message?.content ?? '').trim() === '' && message?.meta?.model_id}
+							{#if hasStructuredOutput}
+								<StructuredOutputRenderer
+									id={renderedMessageId}
+									output={messageOutput}
+									done={message?.meta?.done ?? false}
+									editCodeBlock={false}
+								/>
+							{:else if (message?.content ?? '').trim() === '' && message?.meta?.model_id}
 								<Skeleton />
 							{:else}
 								<span class="markdown-prose">

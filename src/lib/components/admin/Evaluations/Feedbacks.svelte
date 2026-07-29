@@ -125,6 +125,9 @@
 	};
 
 	const shareHandler = async () => {
+		// LICENSE covers this Open WebUI Community wordmark.
+		// Do not alter, remove, obscure, or replace it except as LICENSE permits:
+		// https://docs.openwebui.com/license.
 		toast.success($i18n.t('Redirecting you to Open WebUI Community'));
 
 		// remove snapshot from feedbacks
@@ -418,7 +421,7 @@
 					<tbody class="">
 						{#each items as feedback (feedback.id)}
 							<tr
-								class="bg-white dark:bg-gray-900 dark:border-gray-850 text-xs cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-850/50 transition rounded-xl"
+								class="dark:border-gray-850 text-xs cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-850/50 transition rounded-xl"
 								on:click={() => openFeedbackModal(feedback)}
 							>
 								<td class=" py-0.5 text-right font-normal">

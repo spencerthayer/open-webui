@@ -61,6 +61,9 @@
 								alt="logo"
 								draggable="false"
 								on:error={(e) => {
+									// LICENSE covers this Open WebUI fallback logo.
+									// Do not alter, remove, obscure, or replace it except as LICENSE permits:
+									// https://docs.openwebui.com/license.
 									e.currentTarget.src = '/favicon.png';
 								}}
 							/>
@@ -83,7 +86,7 @@
 		{/if}
 
 		<div
-			class=" mt-2 mb-4 text-3xl text-gray-800 dark:text-gray-100 text-left flex items-center gap-4 "
+			class=" mt-2 mb-4 text-3xl text-gray-800 dark:text-gray-100 text-left flex items-center gap-4"
 		>
 			<div>
 				<div class=" capitalize line-clamp-1" in:fade={{ duration: 200 }}>
@@ -132,7 +135,7 @@
 			</div>
 		</div>
 
-		<div class=" w-full " in:fade={{ duration: 200, delay: 300 }}>
+		<div class=" w-full" in:fade={{ duration: 200, delay: 300 }}>
 			<Suggestions
 				className="grid grid-cols-2"
 				suggestionPrompts={atSelectedModel?.info?.meta?.suggestion_prompts ??

@@ -72,7 +72,7 @@
 	const inputClass =
 		'bg-transparent outline-hidden placeholder:text-gray-300 dark:placeholder:text-gray-700';
 	const selectClass =
-		'dark:bg-gray-900 bg-transparent pr-5 outline-hidden placeholder:text-gray-300 dark:placeholder:text-gray-700';
+		'bg-transparent pr-5 outline-hidden placeholder:text-gray-300 dark:placeholder:text-gray-700';
 
 	const registerOAuthClientHandler = async () => {
 		if (url === '') {
@@ -964,6 +964,9 @@
 							<span class="font-normal">
 								{$i18n.t('Warning')}:
 							</span>
+							<!-- LICENSE covers this Open WebUI wordmark.
+							Do not alter, remove, obscure, or replace it except as LICENSE permits:
+							https://docs.openwebui.com/license. -->
 							{$i18n.t(
 								'MCP support is experimental and its specification changes often, which can lead to incompatibilities. OpenAPI specification support is directly maintained by the Open WebUI team, making it the more reliable option for compatibility.'
 							)}

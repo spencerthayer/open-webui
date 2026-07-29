@@ -156,11 +156,13 @@
 	let itemsLoading = false;
 	let allItemsLoaded = false;
 	let initialized = false;
+	let searchedQuery = '';
 	let searchDebounceTimer: ReturnType<typeof setTimeout>;
 	let requestId = 0;
 
-	$: if (initialized) {
-		query;
+	// Only re-run the search when the query actually changes. Flipping `initialized`
+	// after the initial load would otherwise trigger a second, identical request.
+	$: if (initialized && query !== searchedQuery) {
 		scheduleSearch();
 	}
 
@@ -171,6 +173,7 @@
 
 	const init = async () => {
 		requestId += 1;
+		searchedQuery = query;
 		reset();
 		selectedItem = null;
 		await tick();
@@ -207,12 +210,6 @@
 			total = res.total;
 			const pageItems = res.items;
 
-			if ((pageItems ?? []).length === 0) {
-				allItemsLoaded = true;
-			} else {
-				allItemsLoaded = false;
-			}
-
 			if (items) {
 				const existingIds = new Set(items.map((item) => item.id));
 				const newItems = pageItems.filter((item) => !existingIds.has(item.id));
@@ -220,6 +217,11 @@
 			} else {
 				items = pageItems;
 			}
+
+			// The response reports the full count, so the end of the list is known without
+			// probing for an empty page - otherwise a list shorter than one page would
+			// immediately request the next one.
+			allItemsLoaded = (pageItems ?? []).length === 0 || items.length >= (total ?? 0);
 		}
 
 		itemsLoading = false;

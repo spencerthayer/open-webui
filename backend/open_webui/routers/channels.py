@@ -987,13 +987,20 @@ async def model_response_handler(request, channel, message, user, db=None):
                         db=db,
                     )
                 )[::-1]
+                response_parent_id = (
+                    message.parent_id
+                    if message.parent_id
+                    else (
+                        message.id if await Config.get('channels.model_response_mode', 'thread') == 'thread' else None
+                    )
+                )
 
                 response_message, channel = await new_message_handler(
                     request,
                     channel.id,
                     MessageForm(
                         **{
-                            'parent_id': (message.parent_id if message.parent_id else message.id),
+                            'parent_id': response_parent_id,
                             'content': f'',
                             'data': {},
                             'meta': {
@@ -1500,11 +1507,12 @@ async def update_message_by_id(
         if user.role != 'admin' and message.user_id != user.id:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=ERROR_MESSAGES.DEFAULT())
     else:
-        if (
-            user.role != 'admin'
-            and message.user_id != user.id
-            and not await channel_has_access(user.id, channel, permission='write', strict=False, db=db)
+        if user.role != 'admin' and not await channel_has_access(
+            user.id, channel, permission='write', strict=False, db=db
         ):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=ERROR_MESSAGES.DEFAULT())
+        # Write access is not authorship — block cross-member edits.
+        if user.role != 'admin' and message.user_id != user.id:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=ERROR_MESSAGES.DEFAULT())
 
     try:
@@ -1725,17 +1733,16 @@ async def delete_message_by_id(
         if user.role != 'admin' and message.user_id != user.id:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=ERROR_MESSAGES.DEFAULT())
     else:
-        if (
-            user.role != 'admin'
-            and message.user_id != user.id
-            and not await channel_has_access(
-                user.id,
-                channel,
-                permission='write',
-                strict=False,
-                db=db,
-            )
+        if user.role != 'admin' and not await channel_has_access(
+            user.id,
+            channel,
+            permission='write',
+            strict=False,
+            db=db,
         ):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=ERROR_MESSAGES.DEFAULT())
+        # Write access is not authorship — block cross-member deletes.
+        if user.role != 'admin' and message.user_id != user.id:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=ERROR_MESSAGES.DEFAULT())
 
     try:
@@ -1802,6 +1809,9 @@ async def get_webhook_profile_image(webhook_id: str, user=Depends(get_verified_u
     webhook = await Channels.get_webhook_by_id(webhook_id)
     if not webhook:
         # Return default favicon if webhook not found
+        # LICENSE covers this Open WebUI fallback logo.
+        # Do not alter, remove, obscure, or replace it except as LICENSE permits:
+        # https://docs.openwebui.com/license.
         return FileResponse(f'{STATIC_DIR}/favicon.png')
 
     if webhook.profile_image_url:
@@ -1827,6 +1837,9 @@ async def get_webhook_profile_image(webhook_id: str, user=Depends(get_verified_u
                 pass
 
     # Return default favicon if no profile image
+    # LICENSE covers this Open WebUI fallback logo.
+    # Do not alter, remove, obscure, or replace it except as LICENSE permits:
+    # https://docs.openwebui.com/license.
     return FileResponse(f'{STATIC_DIR}/favicon.png')
 
 

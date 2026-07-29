@@ -211,6 +211,9 @@
 	};
 
 	const shareModelHandler = async (model) => {
+		// LICENSE covers this Open WebUI Community wordmark.
+		// Do not alter, remove, obscure, or replace it except as LICENSE permits:
+		// https://docs.openwebui.com/license.
 		toast.success($i18n.t('Redirecting you to Open WebUI Community'));
 
 		const url = 'https://openwebui.com';
@@ -432,8 +435,11 @@
 </script>
 
 <svelte:head>
+	<!-- LICENSE covers this Open WebUI browser-title identifier.
+	Do not alter, remove, obscure, or replace it except as LICENSE permits:
+	https://docs.openwebui.com/license. -->
 	<title>
-		{$i18n.t('Models')} • {$WEBUI_NAME}
+		{$i18n.t('Models')} / {$WEBUI_NAME}
 	</title>
 </svelte:head>
 
@@ -708,6 +714,9 @@
 											loading="lazy"
 											decoding="async"
 											on:error={(e) => {
+												// LICENSE covers this Open WebUI fallback logo.
+												// Do not alter, remove, obscure, or replace it except as LICENSE permits:
+												// https://docs.openwebui.com/license.
 												e.target.src = '/favicon.png';
 											}}
 										/>
@@ -896,11 +905,10 @@
 					<Pagination bind:page count={total} perPage={30} />
 				{/if}
 			{:else}
-				<div class=" w-full h-full flex flex-col justify-center items-center my-16 mb-24">
-					<div class="max-w-md text-center">
-						<div class=" text-3xl mb-3">😕</div>
-						<div class=" text-lg font-normal mb-1">{$i18n.t('No models found')}</div>
-						<div class=" text-gray-500 text-center text-xs">
+				<div class="flex w-full flex-col items-center justify-center py-16 pb-24">
+					<div class="max-w-sm text-center text-gray-900 dark:text-gray-100">
+						<div class="mb-1.5 text-sm">{$i18n.t('No models found')}</div>
+						<div class="text-center text-xs leading-5 text-gray-500">
 							{$i18n.t('Try adjusting your search or filter to find what you are looking for.')}
 						</div>
 					</div>

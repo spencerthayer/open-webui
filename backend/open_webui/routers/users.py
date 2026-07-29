@@ -44,6 +44,7 @@ from open_webui.utils.auth import (
     get_verified_user,
     validate_password,
 )
+from open_webui.utils.chat_variables import ChatVariablesError, normalize_user_variables, validate_user_variables
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -200,12 +201,14 @@ class SharingPermissions(BaseModel):
     public_skills: bool = False
     notes: bool = False
     public_notes: bool = True
+    folders: bool = False
     public_chats: bool = False
     public_calendars: bool = False
 
 
 class AccessGrantsPermissions(BaseModel):
     allow_users: bool = True
+    allow_groups: bool = True
 
 
 class ChatPermissions(BaseModel):
@@ -475,6 +478,23 @@ async def update_user_settings_by_session_user(
         # If the user is not an admin and does not have permission to use tool servers, remove the key
         updated_user_settings['ui'].pop('toolServers', None)
 
+    ui_notifications = ui_settings.get('notifications') if isinstance(ui_settings, dict) else None
+    if (
+        user.role != 'admin'
+        and (
+            'notifications' in updated_user_settings
+            or (isinstance(ui_notifications, dict) and 'webhook_url' in ui_notifications)
+        )
+        and not await has_permission(
+            user.id,
+            'features.webhooks',
+            await Config.get('user.permissions'),
+        )
+    ):
+        updated_user_settings.pop('notifications', None)
+        if isinstance(ui_notifications, dict):
+            ui_notifications.pop('webhook_url', None)
+
     user = await Users.update_user_settings_by_id(user.id, updated_user_settings, db=db)
     if user:
         await publish_event(
@@ -553,6 +573,52 @@ async def update_user_status_by_session_user(
 async def get_user_info_by_session_user(user=Depends(get_verified_user), db: AsyncSession = Depends(get_async_session)):
     # user already fetched by get_verified_user — no need to refetch
     return user.info
+
+
+class UserVariablesForm(BaseModel):
+    variables: dict = Field(default_factory=dict)
+
+
+class UserVariablesResponse(BaseModel):
+    variables: dict[str, str] = Field(default_factory=dict)
+
+
+############################
+# GetUserVariablesBySessionUser
+############################
+
+
+@router.get('/user/variables', response_model=UserVariablesResponse)
+async def get_user_variables_by_session_user(user=Depends(get_verified_user)):
+    return UserVariablesResponse(variables=normalize_user_variables(user.variables))
+
+
+############################
+# UpdateUserVariablesBySessionUser
+############################
+
+
+@router.post('/user/variables/update', response_model=UserVariablesResponse)
+async def update_user_variables_by_session_user(
+    form_data: UserVariablesForm,
+    user=Depends(get_verified_user),
+    db: AsyncSession = Depends(get_async_session),
+):
+    try:
+        variables = validate_user_variables(form_data.variables)
+    except ChatVariablesError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        )
+
+    updated = await Users.update_user_by_id(user.id, {'variables': variables}, db=db)
+    if not updated:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=ERROR_MESSAGES.USER_NOT_FOUND,
+        )
+    return UserVariablesResponse(variables=variables)
 
 
 ############################
@@ -1003,36 +1069,41 @@ async def get_user_preview(
     user_group_ids = {g.id for g in user_groups}
 
     all_models = await Models.get_all_models(db=db)
-    accessible_model_ids = await AccessGrants.get_accessible_resource_ids(
+    active_models = [m for m in all_models if m.is_active]
+    owned_model_ids = {m.id for m in active_models if m.user_id == user_id}
+    granted_model_ids = await AccessGrants.get_accessible_resource_ids(
         user_id=user_id,
         resource_type='model',
-        resource_ids=[m.id for m in all_models],
+        resource_ids=[m.id for m in active_models if m.user_id != user_id],
         permission='read',
         user_group_ids=user_group_ids,
         db=db,
     )
+    accessible_model_ids = owned_model_ids | granted_model_ids
 
     all_knowledge = await Knowledges.get_knowledge_bases(db=db)
-    accessible_knowledge_ids = await AccessGrants.get_accessible_resource_ids(
+    owned_knowledge_ids = {k.id for k in all_knowledge if k.user_id == user_id}
+    granted_knowledge_ids = await AccessGrants.get_accessible_resource_ids(
         user_id=user_id,
         resource_type='knowledge',
-        resource_ids=[k.id for k in all_knowledge],
+        resource_ids=[k.id for k in all_knowledge if k.user_id != user_id],
         permission='read',
         user_group_ids=user_group_ids,
         db=db,
     )
+    accessible_knowledge_ids = owned_knowledge_ids | granted_knowledge_ids
 
     all_tools = await Tools.get_tools(defer_content=True, db=db)
-    accessible_tool_ids = await AccessGrants.get_accessible_resource_ids(
+    owned_tool_ids = {t.id for t in all_tools if t.user_id == user_id}
+    granted_tool_ids = await AccessGrants.get_accessible_resource_ids(
         user_id=user_id,
         resource_type='tool',
-        resource_ids=[t.id for t in all_tools],
+        resource_ids=[t.id for t in all_tools if t.user_id != user_id],
         permission='read',
         user_group_ids=user_group_ids,
         db=db,
     )
-
-    active_models = [m for m in all_models if m.is_active]
+    accessible_tool_ids = owned_tool_ids | granted_tool_ids
 
     return {
         'user': {'id': target_user.id, 'name': target_user.name},
