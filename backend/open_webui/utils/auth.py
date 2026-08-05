@@ -4,7 +4,6 @@ import asyncio
 import base64
 import hashlib
 import hmac
-import json
 import logging
 import os
 import uuid
@@ -40,6 +39,7 @@ from open_webui.models.auths import Auths
 from open_webui.models.config import Config
 from open_webui.models.users import Users
 from open_webui.utils.access_control import has_permission
+from open_webui.utils.json_codec import JSONCodec
 from pytz import UTC
 
 log = logging.getLogger(__name__)
@@ -143,13 +143,13 @@ def get_license_data(app, key):
             ln, lt = nt(lb)
 
             aesgcm = AESGCM(kb)
-            p = json.loads(aesgcm.decrypt(ln, lt, None))
+            p = JSONCodec.loads(aesgcm.decrypt(ln, lt, None))
             pk.verify(base64.b64decode(p['s']), p['p'].encode())
 
             pb = base64.b64decode(p['p'])
             pn, pt = nt(pb)
 
-            data = json.loads(aesgcm.decrypt(pn, pt, None).decode())
+            data = JSONCodec.loads(aesgcm.decrypt(pn, pt, None).decode())
 
             exp = data.get('exp')
             if exp:
@@ -542,7 +542,7 @@ async def create_admin_user(email: str, password: str, name: str = 'Admin'):
         log.debug('Users already exist, skipping admin creation')
         return None
 
-    log.info(f'Creating admin account from environment variables: {email}')
+    log.info('Creating admin account from environment variables: %s', email)
     try:
         hashed = await get_password_hash(password)
         user = await Auths.insert_new_auth(
@@ -552,7 +552,7 @@ async def create_admin_user(email: str, password: str, name: str = 'Admin'):
             role='admin',
         )
         if user:
-            log.info(f'Admin account created successfully: {email}')
+            log.info('Admin account created successfully: %s', email)
             return user
         else:
             log.error('Failed to create admin account from environment variables')

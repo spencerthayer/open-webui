@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import mimetypes
 import os
@@ -83,19 +82,19 @@ from open_webui.env import (
     ENABLE_COMPRESSION_MIDDLEWARE,
     ENABLE_CUSTOM_MODEL_FALLBACK,
     ENABLE_EASTER_EGGS,
-    ENABLE_PLUGINS,
-    EXTERNAL_PWA_MANIFEST_URL,
     # OAuth Back-Channel Logout
     ENABLE_OAUTH_BACKCHANNEL_LOGOUT,
     ENABLE_OTEL,
+    ENABLE_PLUGINS,
     ENABLE_PUBLIC_ACTIVE_USERS_COUNT,
+    ENABLE_PYODIDE_FILE_PERSISTENCE,
     # SCIM
     ENABLE_SCIM,
     ENABLE_SIGNUP_PASSWORD_CONFIRMATION,
     ENABLE_STAR_SESSIONS_MIDDLEWARE,
-    ENABLE_PYODIDE_FILE_PERSISTENCE,
     ENABLE_VERSION_UPDATE_CHECK,
     ENABLE_WEBSOCKET_SUPPORT,
+    EXTERNAL_PWA_MANIFEST_URL,
     GLOBAL_LOG_LEVEL,
     INSTANCE_ID,
     LICENSE_KEY,
@@ -121,11 +120,13 @@ from open_webui.env import (
 from open_webui.events import (
     EVENTS,
     delete_event_webhook,
-    get_event_catalog as get_event_catalog_items,
     get_event_webhooks,
     migrate_legacy_webhook_config,
     publish_event,
     upsert_event_webhook,
+)
+from open_webui.events import (
+    get_event_catalog as get_event_catalog_items,
 )
 from open_webui.internal.db import engine, get_async_session
 from open_webui.models.access_grants import AccessGrants
@@ -154,8 +155,8 @@ from open_webui.routers import (
     knowledge,
     memories,
     models,
-    notifications,
     notes,
+    notifications,
     ollama,
     openai,
     pipelines,
@@ -229,6 +230,7 @@ from open_webui.utils.chat_variables import (
     normalize_chat_variables,
 )
 from open_webui.utils.embeddings import generate_embeddings
+from open_webui.utils.json_codec import JSONCodec
 from open_webui.utils.json_response import apply_orjson_http_json
 from open_webui.utils.logger import start_logger
 from open_webui.utils.middleware import (
@@ -427,13 +429,13 @@ async def lifespan(app: FastAPI):
         log.info('Initializing tool servers...')
         try:
             await set_tool_servers(mock_request)
-            log.info(f'Initialized {len(app.state.TOOL_SERVERS)} tool server(s)')
+            log.info('Initialized %s tool server(s)', len(app.state.TOOL_SERVERS))
         except Exception as e:
             log.warning(f'Failed to initialize tool servers at startup: {e}')
 
         try:
             await set_terminal_servers(mock_request)
-            log.info(f'Initialized {len(app.state.TERMINAL_SERVERS)} terminal server(s)')
+            log.info('Initialized %s terminal server(s)', len(app.state.TERMINAL_SERVERS))
         except Exception as e:
             log.warning(f'Failed to initialize terminal servers at startup: {e}')
 
@@ -880,7 +882,7 @@ async def get_models(request: Request, refresh: bool = False, user=Depends(get_v
             tags = list(set(model_tags + tags))
             model['tags'] = [{'name': tag} for tag in tags]
         except Exception as e:
-            log.debug(f'Error processing model tags: {e}')
+            log.debug('Error processing model tags: %s', e)
             model['tags'] = []
 
     model_order_list = await Config.get('ui.model_order_list')
@@ -896,7 +898,7 @@ async def get_models(request: Request, refresh: bool = False, user=Depends(get_v
 
     if log.isEnabledFor(logging.DEBUG):
         log.debug(
-            f'/api/models returned filtered models accessible to the user: {json.dumps([model.get("id") for model in models])}'
+            f'/api/models returned filtered models accessible to the user: {JSONCodec.dumps([model.get("id") for model in models])}'
         )
     return {'data': models}
 
@@ -960,7 +962,7 @@ async def unload_model(request: Request, form_data: ModelUnloadForm, user=Depend
             prefix_id = api_config.get('prefix_id', None)
             actual_model = strip_provider_model_prefix(model_id, prefix_id)
 
-            payload = json.dumps({'model': actual_model, 'keep_alive': 0, 'prompt': ''})
+            payload = JSONCodec.dumps({'model': actual_model, 'keep_alive': 0, 'prompt': ''})
 
             try:
                 timeout = aiohttp.ClientTimeout(total=30)
@@ -1211,6 +1213,7 @@ async def chat_completion(
             'user_message_id': user_message.get('id') if user_message else None,
             'assistant_message_id': form_data.pop('assistant_message_id', None),
             'session_id': form_data.pop('session_id', None),
+            'automation_id': form_data.pop('automation_id', None),
             'folder_id': form_data.pop('folder_id', None),
             'filter_ids': form_data.pop('filter_ids', []),
             'tool_ids': form_data.get('tool_ids', None),
@@ -1390,7 +1393,7 @@ async def chat_completion(
                                 user.id,
                             )
                         except Exception as e:
-                            log.debug(f'Error inserting chat files: {e}')
+                            log.debug('Error inserting chat files: %s', e)
                             pass
 
                     if initial_title_generation is not None and all_assistant_ids:
@@ -1412,7 +1415,7 @@ async def chat_completion(
                             try:
                                 await background_tasks_handler(title_ctx)
                             except Exception as e:
-                                log.debug(f'Error generating initial chat title: {e}')
+                                log.debug('Error generating initial chat title: %s', e)
 
                         asyncio.create_task(run_initial_title_generation())
                 else:
@@ -1500,7 +1503,7 @@ async def chat_completion(
                                 user.id,
                             )
                         except Exception as e:
-                            log.debug(f'Error inserting chat files: {e}')
+                            log.debug('Error inserting chat files: %s', e)
                             pass
 
                     # Save ALL assistant placeholders
@@ -1582,7 +1585,7 @@ async def chat_completion(
             # chat:tasks:cancel, unblocking the frontend.
             if isinstance(response, JSONResponse) and response.status_code >= 400:
                 try:
-                    error_body = json.loads(response.body.decode('utf-8', 'replace'))
+                    error_body = JSONCodec.loads(response.body.decode('utf-8', 'replace'))
                     detail = error_body.get('error', error_body) if isinstance(error_body, dict) else error_body
                     if isinstance(detail, dict):
                         detail = detail.get('message', detail.get('detail', str(detail)))
@@ -1666,9 +1669,9 @@ async def chat_completion(
                         try:
                             await client.disconnect()
                         except BaseException as e:
-                            log.debug(f'Error disconnecting MCP client: {e}')
+                            log.debug('Error disconnecting MCP client: %s', e)
             except BaseException as e:
-                log.debug(f'Error cleaning up MCP clients: {e}')
+                log.debug('Error cleaning up MCP clients: %s', e)
 
             # Deregister this task, then emit chat:active=false if no others remain
             try:
@@ -1857,7 +1860,7 @@ async def passthrough_anthropic_messages(request: Request, form_data: dict, user
         response = await session.request(
             method='POST',
             url=request_url,
-            data=json.dumps(payload),
+            data=JSONCodec.dumps(payload),
             headers=headers,
             cookies=cookies,
             ssl=AIOHTTP_CLIENT_SESSION_SSL,
@@ -2064,7 +2067,7 @@ async def list_tasks_by_chat_id_endpoint(request: Request, chat_id: str, user=De
 
     task_ids = await list_task_ids_by_item_id(request.app.state.redis, chat_id)
 
-    log.debug(f'Task IDs for chat {chat_id}: {task_ids}')
+    log.debug('Task IDs for chat %s: %s', chat_id, task_ids)
     return {'task_ids': task_ids}
 
 
@@ -2607,7 +2610,7 @@ async def register_client(request, client_id: str) -> bool:
         **apply_connection_oauth_options(connection, oauth_client_info.model_dump(mode='json'))
     )
     oauth_client_manager.add_client(client_id, oauth_client_info)
-    log.info(f'Re-registered OAuth client {client_id} for tool server')
+    log.info('Re-registered OAuth client %s for tool server', client_id)
     return True
 
 
