@@ -62,20 +62,18 @@ from open_webui.config import (
     OPENGAUSS_POOL_SIZE,
     OPENGAUSS_POOL_TIMEOUT,
 )
-from open_webui.env import SRC_LOG_LEVELS
 from open_webui.retrieval.vector.main import (
     GetResult,
     SearchResult,
     VectorDBBase,
     VectorItem,
 )
-from open_webui.retrieval.vector.utils import process_metadata
+from open_webui.retrieval.vector.utils import iter_filter_conditions, process_metadata
 
 VECTOR_LENGTH = OPENGAUSS_INITIALIZE_MAX_VECTOR_LENGTH
 Base = declarative_base()
 
 log = logging.getLogger(__name__)
-log.setLevel(SRC_LOG_LEVELS['RAG'])
 
 
 class DocumentChunk(Base):
@@ -86,6 +84,12 @@ class DocumentChunk(Base):
     collection_name = Column(Text, nullable=False)
     text = Column(Text, nullable=True)
     vmetadata = Column(MutableDict.as_mutable(JSONB), nullable=True)
+
+
+def _metadata_clause(key: str, op: str, value: Any):
+    if op == '$in':
+        return DocumentChunk.vmetadata[key].astext.in_([str(v) for v in value])
+    return DocumentChunk.vmetadata[key].astext == str(value)
 
 
 class OpenGaussClient(VectorDBBase):
@@ -244,10 +248,15 @@ class OpenGaussClient(VectorDBBase):
                 DocumentChunk.vmetadata,
                 (DocumentChunk.vector.cosine_distance(query_vectors.c.q_vector)).label('distance'),
             ]
+            where_clauses = [DocumentChunk.collection_name == collection_name]
+            if filter:
+                where_clauses.extend(
+                    _metadata_clause(key, op, value) for key, op, value in iter_filter_conditions(filter)
+                )
 
             subq = (
                 select(*result_fields)
-                .where(DocumentChunk.collection_name == collection_name)
+                .where(*where_clauses)
                 .order_by(DocumentChunk.vector.cosine_distance(query_vectors.c.q_vector))
             )
             if limit is not None:

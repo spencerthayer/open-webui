@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import io
 import logging
 import mimetypes
 import os
@@ -11,6 +12,7 @@ from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Callable, Iterator, Optional, Sequence, Union
+from urllib.parse import unquote, urlparse
 
 import tiktoken
 from fastapi import (
@@ -46,6 +48,8 @@ from open_webui.config import (
 )
 from open_webui.constants import ERROR_MESSAGES
 from open_webui.env import (
+    AIOHTTP_CLIENT_ALLOW_REDIRECTS,
+    AIOHTTP_CLIENT_SESSION_SSL,
     DEVICE_TYPE,
     DOCKER,
     RAG_EMBEDDING_TIMEOUT,
@@ -54,6 +58,7 @@ from open_webui.env import (
     SENTENCE_TRANSFORMERS_CROSS_ENCODER_MODEL_KWARGS,
     SENTENCE_TRANSFORMERS_CROSS_ENCODER_SIGMOID_ACTIVATION_FUNCTION,
     SENTENCE_TRANSFORMERS_MODEL_KWARGS,
+    USE_SLIM,
 )
 from open_webui.events import EVENTS, publish_event
 from open_webui.internal.db import get_async_db, get_async_session
@@ -62,7 +67,7 @@ from open_webui.models.knowledge import Knowledges
 from open_webui.models.config import Config
 
 # Document loaders
-from open_webui.retrieval.loaders.youtube import YoutubeLoader
+from open_webui.retrieval.loaders.youtube import YoutubeLoader, YoutubeTranscriptError
 from open_webui.retrieval.utils import (
     build_loader_from_config,
     get_loader_config,
@@ -71,13 +76,14 @@ from open_webui.retrieval.utils import (
     get_embedding_function,
     get_model_path,
     get_reranking_function,
+    is_youtube_url,
     query_collection,
     query_collection_with_hybrid_search,
     query_doc,
     query_doc_with_hybrid_search,
 )
 from open_webui.retrieval.vector.async_client import ASYNC_VECTOR_DB_CLIENT
-from open_webui.retrieval.vector.factory import VECTOR_DB_CLIENT
+from open_webui.retrieval.vector.factory import get_vector_db_client
 from open_webui.retrieval.vector.utils import filter_metadata
 from open_webui.retrieval.web.azure import search_azure
 from open_webui.retrieval.web.bing import search_bing
@@ -91,6 +97,7 @@ from open_webui.retrieval.web.firecrawl import search_firecrawl
 from open_webui.retrieval.web.google_pse import search_google_pse
 from open_webui.retrieval.web.jina_search import search_jina
 from open_webui.retrieval.web.kagi import search_kagi
+from open_webui.retrieval.web.utils import get_ssrf_safe_session, validate_url
 
 # Web search engines
 from open_webui.retrieval.web.main import SearchResult
@@ -122,7 +129,7 @@ from open_webui.utils.misc import (
     calculate_sha256_string,
     sanitize_text_for_db,
 )
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 log = logging.getLogger(__name__)
@@ -144,7 +151,7 @@ def get_ef(
     auto_update: bool = RAG_EMBEDDING_MODEL_AUTO_UPDATE,
 ):
     ef = None
-    if embedding_model and engine == '':
+    if embedding_model and engine == '' and not USE_SLIM:
         from sentence_transformers import SentenceTransformer
 
         try:
@@ -172,6 +179,17 @@ def get_rf(
     rf = None
     # Convert timeout string to int or None (system default)
     timeout_value = int(external_reranker_timeout) if external_reranker_timeout else None
+    if reranking_model and engine == 'external':
+        from open_webui.retrieval.models.external import ExternalReranker
+
+        return ExternalReranker(
+            url=external_reranker_url,
+            api_key=external_reranker_api_key,
+            model=reranking_model,
+            timeout=timeout_value,
+        )
+    if USE_SLIM:
+        return None
     if reranking_model:
         if any(model in reranking_model for model in ['jinaai/jina-colbert-v2']):
             try:
@@ -186,55 +204,39 @@ def get_rf(
                 log.error(f'ColBERT: {e}')
                 raise Exception(ERROR_MESSAGES.DEFAULT(e, 'Error loading reranking model'))
         else:
-            if engine == 'external':
-                try:
-                    from open_webui.retrieval.models.external import ExternalReranker
+            import sentence_transformers
+            import torch
 
-                    rf = ExternalReranker(
-                        url=external_reranker_url,
-                        api_key=external_reranker_api_key,
-                        model=reranking_model,
-                        timeout=timeout_value,
-                    )
-                except Exception as e:
-                    log.error(f'ExternalReranking: {e}')
-                    raise Exception(ERROR_MESSAGES.DEFAULT(e, 'Error loading reranking model'))
-            else:
-                import sentence_transformers
-                import torch
+            try:
+                rf = sentence_transformers.CrossEncoder(
+                    get_model_path(reranking_model, auto_update),
+                    device=DEVICE_TYPE,
+                    trust_remote_code=RAG_RERANKING_MODEL_TRUST_REMOTE_CODE,
+                    backend=SENTENCE_TRANSFORMERS_CROSS_ENCODER_BACKEND,
+                    model_kwargs=SENTENCE_TRANSFORMERS_CROSS_ENCODER_MODEL_KWARGS,
+                    activation_fn=(
+                        torch.nn.Sigmoid() if SENTENCE_TRANSFORMERS_CROSS_ENCODER_SIGMOID_ACTIVATION_FUNCTION else None
+                    ),
+                )
+            except Exception as e:
+                log.error(f'CrossEncoder: {e}')
+                raise Exception(ERROR_MESSAGES.DEFAULT(e, 'CrossEncoder error'))
 
-                try:
-                    rf = sentence_transformers.CrossEncoder(
-                        get_model_path(reranking_model, auto_update),
-                        device=DEVICE_TYPE,
-                        trust_remote_code=RAG_RERANKING_MODEL_TRUST_REMOTE_CODE,
-                        backend=SENTENCE_TRANSFORMERS_CROSS_ENCODER_BACKEND,
-                        model_kwargs=SENTENCE_TRANSFORMERS_CROSS_ENCODER_MODEL_KWARGS,
-                        activation_fn=(
-                            torch.nn.Sigmoid()
-                            if SENTENCE_TRANSFORMERS_CROSS_ENCODER_SIGMOID_ACTIVATION_FUNCTION
-                            else None
-                        ),
-                    )
-                except Exception as e:
-                    log.error(f'CrossEncoder: {e}')
-                    raise Exception(ERROR_MESSAGES.DEFAULT(e, 'CrossEncoder error'))
-
-                # Safely adjust pad_token_id if missing as some models do not have this in config
-                try:
-                    model_cfg = getattr(rf, 'model', None)
-                    if model_cfg and hasattr(model_cfg, 'config'):
-                        cfg = model_cfg.config
-                        if getattr(cfg, 'pad_token_id', None) is None:
-                            # Fallback to eos_token_id when available
-                            eos = getattr(cfg, 'eos_token_id', None)
-                            if eos is not None:
-                                cfg.pad_token_id = eos
-                                log.debug('Missing pad_token_id detected; set to eos_token_id=%s', eos)
-                            else:
-                                log.warning('Neither pad_token_id nor eos_token_id present in model config')
-                except Exception as e2:
-                    log.warning(f'Failed to adjust pad_token_id on CrossEncoder: {e2}')
+            # Safely adjust pad_token_id if missing as some models do not have this in config
+            try:
+                model_cfg = getattr(rf, 'model', None)
+                if model_cfg and hasattr(model_cfg, 'config'):
+                    cfg = model_cfg.config
+                    if getattr(cfg, 'pad_token_id', None) is None:
+                        # Fallback to eos_token_id when available
+                        eos = getattr(cfg, 'eos_token_id', None)
+                        if eos is not None:
+                            cfg.pad_token_id = eos
+                            log.debug('Missing pad_token_id detected; set to eos_token_id=%s', eos)
+                        else:
+                            log.warning('Neither pad_token_id nor eos_token_id present in model config')
+            except Exception as e2:
+                log.warning(f'Failed to adjust pad_token_id on CrossEncoder: {e2}')
 
     return rf
 
@@ -295,6 +297,7 @@ RETRIEVAL_CONFIG_KEYS = {
     'ENABLE_WEB_SEARCH_CONFIRMATION': 'web.search.confirmation.enable',
     'WEB_SEARCH_CONFIRMATION_CONTENT': 'web.search.confirmation.content',
     'EXA_API_KEY': 'web.search.exa_api_key',
+    'EXA_MAX_CONTENT_LENGTH': 'web.search.exa_max_content_length',
     'EXTERNAL_DOCUMENT_LOADER_API_KEY': 'rag.external_document_loader_api_key',
     'EXTERNAL_DOCUMENT_LOADER_HEADERS': 'rag.external_document_loader_headers',
     'EXTERNAL_DOCUMENT_LOADER_URL': 'rag.external_document_loader_url',
@@ -381,6 +384,7 @@ RETRIEVAL_CONFIG_KEYS = {
     'TAVILY_EXTRACT_DEPTH': 'web.search.tavily_extract_depth',
     'TEXT_SPLITTER': 'rag.text_splitter',
     'TIKA_SERVER_URL': 'rag.tika_server_url',
+    'TIKA_SERVER_VERSION': 'rag.tika_server_version',
     'TIKTOKEN_ENCODING_NAME': 'rag.tiktoken_encoding_name',
     'TOP_K': 'rag.top_k',
     'TOP_K_RERANKER': 'rag.top_k_reranker',
@@ -443,6 +447,16 @@ class ProcessUrlForm(CollectionNameForm):
     url: str
 
 
+class ProcessUrlResponse(BaseModel):
+    status: bool
+    type: str
+    name: str
+    url: str
+    collection_name: str | None = None
+    content: str | None = None
+    file: dict | None = None
+
+
 class SearchForm(BaseModel):
     queries: list[str]
 
@@ -474,19 +488,19 @@ async def get_embedding_config(request: Request, user=Depends(get_admin_user)):
 
 
 class OpenAIConfigForm(BaseModel):
-    url: str
-    key: str
+    url: str | None = None
+    key: str | None = None
 
 
 class OllamaConfigForm(BaseModel):
-    url: str
-    key: str
+    url: str | None = None
+    key: str | None = None
 
 
 class AzureOpenAIConfigForm(BaseModel):
-    url: str
-    key: str
-    version: str
+    url: str | None = None
+    key: str | None = None
+    version: str | None = None
 
 
 class EmbeddingModelUpdateForm(BaseModel):
@@ -518,6 +532,8 @@ async def unload_embedding_model(request: Request):
 
 @router.post('/embedding/update')
 async def update_embedding_config(request: Request, form_data: EmbeddingModelUpdateForm, user=Depends(get_admin_user)):
+    if USE_SLIM and form_data.RAG_EMBEDDING_ENGINE == '':
+        raise HTTPException(400, 'Slim requires an external embedding engine (openai, ollama, azure_openai).')
     config = await get_retrieval_config()
     log.info('Updating embedding model: %s to %s', config.RAG_EMBEDDING_MODEL, form_data.RAG_EMBEDDING_MODEL)
     await unload_embedding_model(request)
@@ -528,23 +544,18 @@ async def update_embedding_config(request: Request, form_data: EmbeddingModelUpd
         config.ENABLE_ASYNC_EMBEDDING = form_data.ENABLE_ASYNC_EMBEDDING
         config.RAG_EMBEDDING_CONCURRENT_REQUESTS = form_data.RAG_EMBEDDING_CONCURRENT_REQUESTS
 
-        if config.RAG_EMBEDDING_ENGINE in [
-            'ollama',
-            'openai',
-            'azure_openai',
-        ]:
-            if form_data.openai_config is not None:
-                config.RAG_OPENAI_API_BASE_URL = form_data.openai_config.url
-                config.RAG_OPENAI_API_KEY = form_data.openai_config.key
+        if config.RAG_EMBEDDING_ENGINE == 'openai' and form_data.openai_config is not None:
+            config.RAG_OPENAI_API_BASE_URL = form_data.openai_config.url or ''
+            config.RAG_OPENAI_API_KEY = form_data.openai_config.key or ''
 
-            if form_data.ollama_config is not None:
-                config.RAG_OLLAMA_BASE_URL = form_data.ollama_config.url
-                config.RAG_OLLAMA_API_KEY = form_data.ollama_config.key
+        if config.RAG_EMBEDDING_ENGINE == 'ollama' and form_data.ollama_config is not None:
+            config.RAG_OLLAMA_BASE_URL = form_data.ollama_config.url or ''
+            config.RAG_OLLAMA_API_KEY = form_data.ollama_config.key or ''
 
-            if form_data.azure_openai_config is not None:
-                config.RAG_AZURE_OPENAI_BASE_URL = form_data.azure_openai_config.url
-                config.RAG_AZURE_OPENAI_API_KEY = form_data.azure_openai_config.key
-                config.RAG_AZURE_OPENAI_API_VERSION = form_data.azure_openai_config.version
+        if config.RAG_EMBEDDING_ENGINE == 'azure_openai' and form_data.azure_openai_config is not None:
+            config.RAG_AZURE_OPENAI_BASE_URL = form_data.azure_openai_config.url or ''
+            config.RAG_AZURE_OPENAI_API_KEY = form_data.azure_openai_config.key or ''
+            config.RAG_AZURE_OPENAI_API_VERSION = form_data.azure_openai_config.version or ''
 
         request.app.state.ef = get_ef(
             config.RAG_EMBEDDING_ENGINE,
@@ -648,6 +659,7 @@ async def get_rag_config(request: Request, user=Depends(get_admin_user)):
         'EXTERNAL_DOCUMENT_LOADER_API_KEY': config.EXTERNAL_DOCUMENT_LOADER_API_KEY,
         'EXTERNAL_DOCUMENT_LOADER_HEADERS': config.EXTERNAL_DOCUMENT_LOADER_HEADERS,
         'TIKA_SERVER_URL': config.TIKA_SERVER_URL,
+        'TIKA_SERVER_VERSION': config.TIKA_SERVER_VERSION,
         'DOCLING_SERVER_URL': config.DOCLING_SERVER_URL,
         'DOCLING_API_KEY': config.DOCLING_API_KEY,
         'DOCLING_PARAMS': config.DOCLING_PARAMS,
@@ -734,6 +746,7 @@ async def get_rag_config(request: Request, user=Depends(get_admin_user)):
             'BING_SEARCH_V7_ENDPOINT': config.BING_SEARCH_V7_ENDPOINT,
             'BING_SEARCH_V7_SUBSCRIPTION_KEY': config.BING_SEARCH_V7_SUBSCRIPTION_KEY,
             'EXA_API_KEY': config.EXA_API_KEY,
+            'EXA_MAX_CONTENT_LENGTH': config.EXA_MAX_CONTENT_LENGTH,
             'PERPLEXITY_API_KEY': config.PERPLEXITY_API_KEY,
             'PERPLEXITY_MODEL': config.PERPLEXITY_MODEL,
             'PERPLEXITY_SEARCH_CONTEXT_USAGE': config.PERPLEXITY_SEARCH_CONTEXT_USAGE,
@@ -777,7 +790,7 @@ class WebConfig(BaseModel):
     WEB_SEARCH_TRUST_ENV: bool | None = None
     WEB_SEARCH_RESULT_COUNT: int | None = None
     WEB_SEARCH_CONCURRENT_REQUESTS: int | None = None
-    WEB_SEARCH_DOMAIN_FILTER_LIST: list[str | None] = []
+    WEB_SEARCH_DOMAIN_FILTER_LIST: list[str] | None = []
     WEB_FETCH_MAX_CONTENT_LENGTH: int | None = None
     WEB_LOADER_CONCURRENT_REQUESTS: int | None = None
     BYPASS_WEB_SEARCH_EMBEDDING_AND_RETRIEVAL: bool | None = None
@@ -813,6 +826,7 @@ class WebConfig(BaseModel):
     BING_SEARCH_V7_ENDPOINT: str | None = None
     BING_SEARCH_V7_SUBSCRIPTION_KEY: str | None = None
     EXA_API_KEY: str | None = None
+    EXA_MAX_CONTENT_LENGTH: int | None = Field(default=None, gt=0, strict=True)
     PERPLEXITY_API_KEY: str | None = None
     PERPLEXITY_MODEL: str | None = None
     PERPLEXITY_SEARCH_CONTEXT_USAGE: str | None = None
@@ -835,7 +849,7 @@ class WebConfig(BaseModel):
     EXTERNAL_WEB_SEARCH_API_KEY: str | None = None
     EXTERNAL_WEB_LOADER_URL: str | None = None
     EXTERNAL_WEB_LOADER_API_KEY: str | None = None
-    YOUTUBE_LOADER_LANGUAGE: list[str | None] = None
+    YOUTUBE_LOADER_LANGUAGE: list[str] | None = None
     YOUTUBE_LOADER_PROXY_URL: str | None = None
     YOUTUBE_LOADER_TRANSLATION: str | None = None
     YANDEX_WEB_SEARCH_URL: str | None = None
@@ -883,6 +897,7 @@ class ConfigForm(BaseModel):
     EXTERNAL_DOCUMENT_LOADER_HEADERS: dict | None = None
 
     TIKA_SERVER_URL: str | None = None
+    TIKA_SERVER_VERSION: str | None = None
     DOCLING_SERVER_URL: str | None = None
     DOCLING_API_KEY: str | None = None
     DOCLING_PARAMS: dict | None = None
@@ -924,7 +939,7 @@ class ConfigForm(BaseModel):
     FILE_MAX_COUNT: Union[int, str | None] = None
     FILE_IMAGE_COMPRESSION_WIDTH: Union[int, str | None] = None
     FILE_IMAGE_COMPRESSION_HEIGHT: Union[int, str | None] = None
-    ALLOWED_FILE_EXTENSIONS: list[str | None] = None
+    ALLOWED_FILE_EXTENSIONS: list[str] | None = None
 
     # Integration settings
     ENABLE_GOOGLE_DRIVE_INTEGRATION: bool | None = None
@@ -938,6 +953,44 @@ class ConfigForm(BaseModel):
 async def update_rag_config(request: Request, form_data: ConfigForm, user=Depends(get_admin_user)):
     # RAG settings
     config = await get_retrieval_config()
+    if USE_SLIM:
+        if (
+            form_data.web
+            and form_data.web.WEB_SEARCH_ENGINE == 'duckduckgo'
+            and config.WEB_SEARCH_ENGINE != 'duckduckgo'
+        ):
+            raise HTTPException(
+                400,
+                'DDGS is unavailable in slim. Configure another web search provider in Admin Settings > Web Search.',
+            )
+        if (
+            form_data.web
+            and form_data.web.WEB_LOADER_ENGINE == 'playwright'
+            and config.WEB_LOADER_ENGINE != 'playwright'
+        ):
+            raise HTTPException(
+                400, 'Playwright is unavailable in slim. Use basic HTTP fetching or an external web loader.'
+            )
+        if form_data.TEXT_SPLITTER == 'token_transformers' and config.TEXT_SPLITTER != 'token_transformers':
+            raise HTTPException(
+                400, 'Transformers tokenization is unavailable in slim. Use character or token splitting.'
+            )
+        reranker_engine = (
+            form_data.RAG_RERANKING_ENGINE
+            if form_data.RAG_RERANKING_ENGINE is not None
+            else config.RAG_RERANKING_ENGINE
+        )
+        reranker_model = (
+            form_data.RAG_RERANKING_MODEL if form_data.RAG_RERANKING_MODEL is not None else config.RAG_RERANKING_MODEL
+        )
+        if (
+            reranker_engine != 'external'
+            and reranker_model
+            and (reranker_engine != config.RAG_RERANKING_ENGINE or reranker_model != config.RAG_RERANKING_MODEL)
+        ):
+            raise HTTPException(
+                400, 'Slim requires an external reranker, or an empty reranking model for cosine scoring.'
+            )
     config.RAG_TEMPLATE = form_data.RAG_TEMPLATE if form_data.RAG_TEMPLATE is not None else config.RAG_TEMPLATE
     config.TOP_K = form_data.TOP_K if form_data.TOP_K is not None else config.TOP_K
     config.BYPASS_EMBEDDING_AND_RETRIEVAL = (
@@ -1059,6 +1112,9 @@ async def update_rag_config(request: Request, form_data: ConfigForm, user=Depend
     config.TIKA_SERVER_URL = (
         form_data.TIKA_SERVER_URL if form_data.TIKA_SERVER_URL is not None else config.TIKA_SERVER_URL
     )
+    config.TIKA_SERVER_VERSION = (
+        form_data.TIKA_SERVER_VERSION if form_data.TIKA_SERVER_VERSION is not None else config.TIKA_SERVER_VERSION
+    )
     config.DOCLING_SERVER_URL = (
         form_data.DOCLING_SERVER_URL if form_data.DOCLING_SERVER_URL is not None else config.DOCLING_SERVER_URL
     )
@@ -1159,7 +1215,8 @@ async def update_rag_config(request: Request, form_data: ConfigForm, user=Depend
         else config.RAG_RERANKING_BATCH_SIZE
     )
 
-    log.info('Updating reranking model: %s to %s', config.RAG_RERANKING_MODEL, form_data.RAG_RERANKING_MODEL)
+    if form_data.RAG_RERANKING_MODEL is not None:
+        log.info('Updating reranking model: %s to %s', config.RAG_RERANKING_MODEL, form_data.RAG_RERANKING_MODEL)
     try:
         config.RAG_RERANKING_MODEL = (
             form_data.RAG_RERANKING_MODEL if form_data.RAG_RERANKING_MODEL is not None else config.RAG_RERANKING_MODEL
@@ -1289,6 +1346,7 @@ async def update_rag_config(request: Request, form_data: ConfigForm, user=Depend
         config.BING_SEARCH_V7_ENDPOINT = form_data.web.BING_SEARCH_V7_ENDPOINT
         config.BING_SEARCH_V7_SUBSCRIPTION_KEY = form_data.web.BING_SEARCH_V7_SUBSCRIPTION_KEY
         config.EXA_API_KEY = form_data.web.EXA_API_KEY
+        config.EXA_MAX_CONTENT_LENGTH = form_data.web.EXA_MAX_CONTENT_LENGTH
         config.PERPLEXITY_API_KEY = form_data.web.PERPLEXITY_API_KEY
         config.PERPLEXITY_MODEL = form_data.web.PERPLEXITY_MODEL
         config.PERPLEXITY_SEARCH_CONTEXT_USAGE = form_data.web.PERPLEXITY_SEARCH_CONTEXT_USAGE
@@ -1357,6 +1415,7 @@ async def update_rag_config(request: Request, form_data: ConfigForm, user=Depend
         'EXTERNAL_DOCUMENT_LOADER_API_KEY': config.EXTERNAL_DOCUMENT_LOADER_API_KEY,
         'EXTERNAL_DOCUMENT_LOADER_HEADERS': config.EXTERNAL_DOCUMENT_LOADER_HEADERS,
         'TIKA_SERVER_URL': config.TIKA_SERVER_URL,
+        'TIKA_SERVER_VERSION': config.TIKA_SERVER_VERSION,
         'DOCLING_SERVER_URL': config.DOCLING_SERVER_URL,
         'DOCLING_API_KEY': config.DOCLING_API_KEY,
         'DOCLING_PARAMS': config.DOCLING_PARAMS,
@@ -1440,6 +1499,7 @@ async def update_rag_config(request: Request, form_data: ConfigForm, user=Depend
             'BING_SEARCH_V7_ENDPOINT': config.BING_SEARCH_V7_ENDPOINT,
             'BING_SEARCH_V7_SUBSCRIPTION_KEY': config.BING_SEARCH_V7_SUBSCRIPTION_KEY,
             'EXA_API_KEY': config.EXA_API_KEY,
+            'EXA_MAX_CONTENT_LENGTH': config.EXA_MAX_CONTENT_LENGTH,
             'PERPLEXITY_API_KEY': config.PERPLEXITY_API_KEY,
             'PERPLEXITY_MODEL': config.PERPLEXITY_MODEL,
             'PERPLEXITY_SEARCH_CONTEXT_USAGE': config.PERPLEXITY_SEARCH_CONTEXT_USAGE,
@@ -1571,6 +1631,8 @@ def merge_docs_to_target_size(
 
 
 def get_transformers_tokenizer(request: Request, config: RetrievalConfig):
+    if USE_SLIM:
+        raise HTTPException(503, 'Transformers tokenization is unavailable in slim. Use character or token splitting.')
     if config.RAG_TOKENIZER_MODEL:
         from transformers import AutoTokenizer
 
@@ -1616,6 +1678,14 @@ def get_splitter_length_function(
     return len
 
 
+def filter_file_metadata(metadata: dict | None) -> dict:
+    metadata = dict(metadata or {})
+    data = metadata.pop('data', None)
+    if isinstance(data, dict):
+        metadata = {**filter_metadata(data), **metadata}
+    return filter_metadata(metadata)
+
+
 def save_docs_to_vector_db(
     request: Request,
     docs,
@@ -1647,7 +1717,7 @@ def save_docs_to_vector_db(
 
     # Check if entries with the same hash (metadata.hash) already exist
     if metadata and 'hash' in metadata:
-        result = VECTOR_DB_CLIENT.query(
+        result = get_vector_db_client().query(
             collection_name=collection_name,
             filter={'hash': metadata['hash']},
         )
@@ -1747,11 +1817,11 @@ def save_docs_to_vector_db(
     ]
 
     try:
-        if VECTOR_DB_CLIENT.has_collection(collection_name=collection_name):
+        if get_vector_db_client().has_collection(collection_name=collection_name):
             log.info('collection %s already exists', collection_name)
 
             if overwrite:
-                VECTOR_DB_CLIENT.delete_collection(collection_name=collection_name)
+                get_vector_db_client().delete_collection(collection_name=collection_name)
                 log.info('deleting existing collection %s', collection_name)
             elif add is False:
                 log.info('collection %s already exists, overwrite is False and add is False', collection_name)
@@ -1814,7 +1884,7 @@ def save_docs_to_vector_db(
         ]
 
         log.info('adding to collection %s', collection_name)
-        VECTOR_DB_CLIENT.insert(
+        get_vector_db_client().insert(
             collection_name=collection_name,
             items=items,
         )
@@ -1832,6 +1902,10 @@ class ProcessFileForm(BaseModel):
     collection_name: str | None = None
 
 
+def has_vector_results(result) -> bool:
+    return bool(result and result.ids and result.ids[0])
+
+
 @router.post('/process/file')
 async def process_file(
     request: Request,
@@ -1840,7 +1914,6 @@ async def process_file(
     db: AsyncSession = Depends(get_async_session),
 ):
     """
-    Process a file and save its content to the vector database.
     Process a file and save its content to the vector database.
     Note: granular session management is used to prevent connection pool exhaustion.
     The session is committed before external API calls, and updates use a fresh session.
@@ -1854,11 +1927,13 @@ async def process_file(
     if file:
         try:
             collection_name = form_data.collection_name
+            file_collection_name = f'file-{file.id}'
 
             if collection_name is None:
-                collection_name = f'file-{file.id}'
+                collection_name = file_collection_name
             else:
                 await _validate_collection_access([collection_name], user, access_type='write')
+            collection_names = [collection_name]
 
             if form_data.content:
                 # Update the content in the file
@@ -1866,7 +1941,7 @@ async def process_file(
 
                 try:
                     # /files/{file_id}/data/content/update
-                    await ASYNC_VECTOR_DB_CLIENT.delete_collection(collection_name=f'file-{file.id}')
+                    await ASYNC_VECTOR_DB_CLIENT.delete_collection(collection_name=file_collection_name)
                 except Exception:
                     # Audio file upload pipeline
                     pass
@@ -1875,7 +1950,7 @@ async def process_file(
                     Document(
                         page_content=form_data.content.replace('<br/>', '\n'),
                         metadata={
-                            **file.meta,
+                            **filter_file_metadata(file.meta),
                             'name': file.filename,
                             'created_by': file.user_id,
                             'file_id': file.id,
@@ -1886,27 +1961,32 @@ async def process_file(
 
                 text_content = form_data.content
             elif form_data.collection_name:
-                # Check if the file has already been processed and save the content
+                # Add this file to a knowledge collection.
                 # Usage: /knowledge/{id}/file/add, /knowledge/{id}/file/update
+                # Reuse file-{id} chunks when they exist; otherwise restore file-{id}
+                # from stored file content while adding the file to the knowledge collection.
 
-                result = await ASYNC_VECTOR_DB_CLIENT.query(
-                    collection_name=f'file-{file.id}', filter={'file_id': file.id}
+                file_result = await ASYNC_VECTOR_DB_CLIENT.query(
+                    collection_name=file_collection_name, filter={'file_id': file.id}
                 )
+                stored_content = (file.data or {}).get('content')
 
-                if result is not None and len(result.ids[0]) > 0:
+                if has_vector_results(file_result):
+                    # Normal path: reuse the already-processed per-file chunks.
                     docs = [
                         Document(
-                            page_content=result.documents[0][idx],
-                            metadata=result.metadatas[0][idx],
+                            page_content=file_result.documents[0][idx],
+                            metadata=file_result.metadatas[0][idx],
                         )
-                        for idx, id in enumerate(result.ids[0])
+                        for idx, id in enumerate(file_result.ids[0])
                     ]
-                else:
+                elif stored_content is not None:
+                    # Repair path: vector chunks are missing, but SQL still has the file text.
                     docs = [
                         Document(
-                            page_content=file.data.get('content', ''),
+                            page_content=stored_content,
                             metadata={
-                                **file.meta,
+                                **filter_file_metadata(file.meta),
                                 'name': file.filename,
                                 'created_by': file.user_id,
                                 'file_id': file.id,
@@ -1914,8 +1994,11 @@ async def process_file(
                             },
                         )
                     ]
+                    collection_names.append(file_collection_name)
+                else:
+                    raise ValueError(ERROR_MESSAGES.EMPTY_CONTENT)
 
-                text_content = file.data.get('content', '')
+                text_content = stored_content or ''
             else:
                 # Process the file and save the content
                 # Usage: /files/
@@ -1936,6 +2019,7 @@ async def process_file(
                         Document(
                             page_content=doc.page_content,
                             metadata={
+                                **filter_file_metadata(file.meta),
                                 **filter_metadata(doc.metadata),
                                 'name': file.filename,
                                 'created_by': file.user_id,
@@ -1950,7 +2034,7 @@ async def process_file(
                         Document(
                             page_content=file.data.get('content', ''),
                             metadata={
-                                **file.meta,
+                                **filter_file_metadata(file.meta),
                                 'name': file.filename,
                                 'created_by': file.user_id,
                                 'file_id': file.id,
@@ -1969,7 +2053,7 @@ async def process_file(
             hash = calculate_sha256_string(text_content)
 
             if config.BYPASS_EMBEDDING_AND_RETRIEVAL:
-                await Files.update_file_data_by_id(file.id, {'status': 'completed'}, db=db)
+                await Files.update_file_data_by_id(file.id, {'status': 'completed', 'error': None}, db=db)
                 await Files.update_file_hash_by_id(file.id, hash, db=db)
                 await publish_event(
                     request,
@@ -1997,20 +2081,22 @@ async def process_file(
                     # calls asyncio.run_coroutine_threadsafe(..., main_loop).result()
                     # which blocks the calling thread.  We MUST run it in a
                     # worker thread to avoid deadlocking the event loop.
-                    result = await run_in_threadpool(
-                        save_docs_to_vector_db,
-                        request,
-                        docs=docs,
-                        collection_name=collection_name,
-                        config=config,
-                        metadata={
-                            'file_id': file.id,
-                            'name': file.filename,
-                            'hash': hash,
-                        },
-                        add=(True if form_data.collection_name else False),
-                        user=user,
-                    )
+                    result = True
+                    for name in collection_names:
+                        result = await run_in_threadpool(
+                            save_docs_to_vector_db,
+                            request,
+                            docs=docs,
+                            collection_name=name,
+                            config=config,
+                            metadata={
+                                'file_id': file.id,
+                                'name': file.filename,
+                                'hash': hash,
+                            },
+                            add=(True if form_data.collection_name else False),
+                            user=user,
+                        )
                     log.info('added %s items to collection %s', len(docs), collection_name)
 
                     if result:
@@ -2026,7 +2112,7 @@ async def process_file(
 
                             await Files.update_file_data_by_id(
                                 file.id,
-                                {'status': 'completed'},
+                                {'status': 'completed', 'error': None},
                                 db=session,
                             )
                             await Files.update_file_hash_by_id(file.id, hash, db=session)
@@ -2056,11 +2142,24 @@ async def process_file(
             async with get_async_db() as session:
                 await Files.update_file_data_by_id(
                     file.id,
-                    {'status': 'failed'},
+                    {'status': 'failed', 'error': str(e)},
                     db=session,
                 )
                 # Clear the hash so the file can be re-uploaded after fixing the issue
                 await Files.update_file_hash_by_id(file.id, None, db=session)
+
+            await publish_event(
+                request,
+                EVENTS.RETRIEVAL_CONTENT_PROCESS_FAILED,
+                actor=user,
+                subject_id=file.id,
+                subject_type='file',
+                data={
+                    'collection_name': collection_name,
+                    'filename': file.filename,
+                    'message': f'{file.filename}: {e}',
+                },
+            )
 
             if 'No pandoc was found' in str(e):
                 raise HTTPException(
@@ -2127,6 +2226,190 @@ async def process_text(
         )
 
 
+async def _fetch_url(url: str, max_size_mb: int | str | None) -> dict:
+    await asyncio.to_thread(validate_url, url)
+    max_bytes = None
+    if max_size_mb:
+        try:
+            max_bytes = int(max_size_mb) * 1024 * 1024
+        except (TypeError, ValueError):
+            max_bytes = None
+
+    async with get_ssrf_safe_session() as session:
+        async with session.get(
+            url, ssl=AIOHTTP_CLIENT_SESSION_SSL, allow_redirects=AIOHTTP_CLIENT_ALLOW_REDIRECTS
+        ) as response:
+            response.raise_for_status()
+
+            content_type = response.headers.get('Content-Type', '')
+            content_disposition = response.headers.get('Content-Disposition', '')
+            content_length = response.headers.get('Content-Length')
+            base_content_type = content_type.split(';')[0].strip().lower()
+            is_attachment = content_disposition.split(';')[0].strip().lower() == 'attachment'
+
+            chunks = []
+            total = 0
+
+            iterator = response.content.iter_chunked(64 * 1024)
+            first_chunk = await anext(iterator, b'')
+
+            if not is_attachment and base_content_type in {'text/html', 'application/xhtml+xml'}:
+                return {'kind': 'web'}
+
+            if not is_attachment and base_content_type in {'', 'application/octet-stream', 'binary/octet-stream'}:
+                sample = first_chunk[:4096].lstrip().lower()
+                if (
+                    sample.startswith((b'<!doctype html', b'<html', b'<head', b'<body', b'<?xml'))
+                    or b'<html' in sample[:1024]
+                ):
+                    return {'kind': 'web'}
+
+            if max_bytes and content_length:
+                try:
+                    if int(content_length) > max_bytes:
+                        raise HTTPException(
+                            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                            detail=ERROR_MESSAGES.FILE_TOO_LARGE(size=f'{max_size_mb} MB'),
+                        )
+                except ValueError:
+                    pass
+
+            if first_chunk:
+                chunks.append(first_chunk)
+                total += len(first_chunk)
+                if max_bytes and total > max_bytes:
+                    raise HTTPException(
+                        status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                        detail=ERROR_MESSAGES.FILE_TOO_LARGE(size=f'{max_size_mb} MB'),
+                    )
+
+            async for chunk in iterator:
+                if not chunk:
+                    continue
+                chunks.append(chunk)
+                total += len(chunk)
+                if max_bytes and total > max_bytes:
+                    raise HTTPException(
+                        status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                        detail=ERROR_MESSAGES.FILE_TOO_LARGE(size=f'{max_size_mb} MB'),
+                    )
+
+            data = b''.join(chunks)
+
+            image_mime = None
+            try:
+                from PIL import Image
+
+                image = Image.open(io.BytesIO(data))
+                image.verify()
+                image_mime = Image.MIME.get(image.format) if image.format else None
+            except Exception:
+                image_mime = None
+
+            if base_content_type.startswith('image/') and image_mime is None:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=ERROR_MESSAGES.DEFAULT('Invalid image content'),
+                )
+
+            filename = ''
+            filename_star = re.search(r"filename\*=UTF-8''([^;]+)", content_disposition, re.IGNORECASE)
+            filename_plain = re.search(r'filename="?([^";]+)"?', content_disposition, re.IGNORECASE)
+            if filename_star:
+                filename = unquote(filename_star.group(1))
+            elif filename_plain:
+                filename = filename_plain.group(1)
+            if not filename:
+                filename = os.path.basename(urlparse(url).path)
+            filename = os.path.basename(filename or 'download')
+
+            resolved_content_type = (
+                image_mime or base_content_type or mimetypes.guess_type(filename)[0] or 'application/octet-stream'
+            )
+            if not os.path.splitext(filename)[1]:
+                filename = f'{filename}{mimetypes.guess_extension(resolved_content_type) or ".bin"}'
+
+            return {
+                'kind': 'file',
+                'data': data,
+                'filename': filename,
+                'content_type': resolved_content_type,
+            }
+
+
+@router.post('/process/url', response_model=ProcessUrlResponse)
+async def process_url(
+    request: Request,
+    form_data: ProcessUrlForm,
+    process: bool = Query(True, description='Whether to process and save the content'),
+    user=Depends(get_verified_user),
+):
+    try:
+        if is_youtube_url(form_data.url):
+            result = await process_web(request, form_data, process=process, user=user)
+            return {
+                'status': True,
+                'type': 'youtube',
+                'name': form_data.url,
+                'url': form_data.url,
+                'collection_name': result.get('collection_name'),
+                'content': result.get('content'),
+            }
+
+        config = await get_retrieval_config()
+        url_result = await _fetch_url(form_data.url, config.FILE_MAX_SIZE)
+
+        if url_result['kind'] == 'web':
+            result = await process_web(request, form_data, process=process, user=user)
+            return {
+                'status': True,
+                'type': 'web',
+                'name': form_data.url,
+                'url': form_data.url,
+                'collection_name': result.get('collection_name'),
+                'content': result.get('content'),
+            }
+
+        from open_webui.routers.files import upload_file_handler
+
+        is_image = url_result['content_type'].startswith('image/')
+        file = UploadFile(
+            file=io.BytesIO(url_result['data']),
+            filename=url_result['filename'],
+            headers={'content-type': url_result['content_type']},
+        )
+        uploaded_file = await upload_file_handler(
+            request,
+            file=file,
+            metadata={'source_url': form_data.url},
+            process=process and not is_image,
+            process_in_background=False,
+            user=user,
+        )
+        file_data = uploaded_file.model_dump() if hasattr(uploaded_file, 'model_dump') else uploaded_file
+        file_id = file_data.get('id') if isinstance(file_data, dict) else None
+        if file_id:
+            refreshed_file = await Files.get_file_by_id(file_id)
+            if refreshed_file:
+                file_data = refreshed_file.model_dump()
+        return {
+            'status': True,
+            'type': 'image' if is_image else 'file',
+            'name': url_result['filename'],
+            'url': form_data.url,
+            'collection_name': (file_data.get('meta') or {}).get('collection_name'),
+            'file': file_data,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        log.exception(e)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=ERROR_MESSAGES.DEFAULT(e, 'Error processing URL'),
+        )
+
+
 @router.post('/process/youtube')
 @router.post('/process/web')
 async def process_web(
@@ -2137,8 +2420,25 @@ async def process_web(
     user=Depends(get_verified_user),
 ):
     config = await get_retrieval_config()
+
     try:
         content, docs = await get_content_from_url(request, form_data.url)
+    except HTTPException:
+        raise
+    except YoutubeTranscriptError as e:
+        log.warning('YouTube transcript unavailable for %s: %s', form_data.url, e)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
+    except Exception as e:
+        log.exception(e)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=ERROR_MESSAGES.DEFAULT(e, f'Could not read content from {form_data.url}'),
+        )
+
+    try:
         log.debug('text_content: %s', content)
 
         if process:
@@ -2166,6 +2466,7 @@ async def process_web(
                 'status': True,
                 'collection_name': collection_name,
                 'filename': form_data.url,
+                'content': content,
                 'file': {
                     'data': {
                         'content': content,
@@ -2396,6 +2697,7 @@ async def search_web(request: Request, engine: str, query: str, user=None) -> li
                 query,
                 config.WEB_SEARCH_RESULT_COUNT,
                 config.WEB_SEARCH_DOMAIN_FILTER_LIST,
+                max_content_length=config.EXA_MAX_CONTENT_LENGTH,
             )
         else:
             raise Exception('No EXA_API_KEY found in environment variables')
@@ -2614,7 +2916,10 @@ async def process_web_search(request: Request, form_data: SearchForm, user=Depen
 
     except Exception as e:
         log.exception('Web search failed')
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=ERROR_MESSAGES.WEB_SEARCH_ERROR(e))
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            detail=ERROR_MESSAGES.DEFAULT(e, ERROR_MESSAGES.WEB_SEARCH_ERROR),
+        )
 
     if len(urls) == 0:
         raise HTTPException(
@@ -2709,7 +3014,7 @@ async def process_web_search(request: Request, form_data: SearchForm, user=Depen
         log.exception('Web search content loading failed')
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
-            detail=ERROR_MESSAGES.DEFAULT(e, ERROR_MESSAGES.WEB_SEARCH_ERROR()),
+            detail=ERROR_MESSAGES.DEFAULT(e, ERROR_MESSAGES.WEB_SEARCH_ERROR),
         )
 
 
@@ -2775,7 +3080,7 @@ async def query_doc_handler(
             query_embedding = await request.app.state.EMBEDDING_FUNCTION(
                 form_data.query, prefix=RAG_EMBEDDING_QUERY_PREFIX, user=user
             )
-            # query_doc wraps a blocking VECTOR_DB_CLIENT.search call;
+            # query_doc wraps a blocking get_vector_db_client().search call;
             # offload so the request's event loop stays responsive.
             return await asyncio.to_thread(
                 query_doc,
@@ -3063,7 +3368,7 @@ async def process_files_batch(
                 Document(
                     page_content=text_content.replace('<br/>', '\n'),
                     metadata={
-                        **file.meta,
+                        **filter_file_metadata(file.meta),
                         'name': file.filename,
                         'created_by': file.user_id,
                         'file_id': file.id,

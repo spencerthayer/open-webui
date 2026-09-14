@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { toast } from 'svelte-sonner';
 	import { getContext, onDestroy, onMount, tick } from 'svelte';
-	const i18n = getContext('i18n');
+	const i18n: any = getContext('i18n');
 
 	import Modal from '$lib/components/common/Modal.svelte';
 	import SearchInput from './Sidebar/SearchInput.svelte';
@@ -14,6 +14,7 @@
 		archiveChatById,
 		updateChatById,
 		updateChatFolderIdById,
+		markChatUnreadById,
 		getAllTags
 	} from '$lib/apis/chats';
 	import Spinner from '../common/Spinner.svelte';
@@ -84,6 +85,17 @@
 		if (res) {
 			await refreshSidebar();
 			await searchHandler();
+		}
+	};
+
+	const markUnreadHandler = async (id) => {
+		const res = await markChatUnreadById(localStorage.token, id).catch((error) => {
+			toast.error(`${error}`);
+			return null;
+		});
+
+		if (res) {
+			await refreshSidebar();
 		}
 	};
 
@@ -522,7 +534,7 @@
 						{
 							label: $i18n.t('Create a new note'),
 							onClick: async () => {
-								await goto(`/notes?content=${query}`);
+								await goto(`/notes/new?content=${encodeURIComponent(query)}`);
 								show = false;
 								onClose();
 							},
@@ -786,17 +798,19 @@
 												</button>
 											</Tooltip>
 
-											<Tooltip content={$i18n.t('Delete')}>
-												<button
-													class="self-center dark:hover:text-white transition"
-													on:click|stopPropagation={() => {
-														deleteChatHandler(chat.id);
-													}}
-													type="button"
-												>
-													<GarbageBin strokeWidth="2" />
-												</button>
-											</Tooltip>
+											{#if $user?.role === 'admin' || ($user?.permissions?.chat?.delete ?? true)}
+												<Tooltip content={$i18n.t('Delete')}>
+													<button
+														class="self-center dark:hover:text-white transition"
+														on:click|stopPropagation={() => {
+															deleteChatHandler(chat.id);
+														}}
+														type="button"
+													>
+														<GarbageBin strokeWidth="2" />
+													</button>
+												</Tooltip>
+											{/if}
 										</div>
 									{:else}
 										<div class="flex items-center">
@@ -816,6 +830,9 @@
 												renameHandler={() => {
 													renameHandler(chat.id);
 												}}
+												markUnreadHandler={() => {
+													markUnreadHandler(chat.id);
+												}}
 												deleteHandler={() => {
 													menuChatId = chat.id;
 													menuChatTitle = chat.title;
@@ -828,7 +845,7 @@
 												}}
 											>
 												<button
-													aria-label="Chat Menu"
+													aria-label={$i18n.t('Chat Menu')}
 													class="self-center dark:hover:text-white transition"
 												>
 													<svg

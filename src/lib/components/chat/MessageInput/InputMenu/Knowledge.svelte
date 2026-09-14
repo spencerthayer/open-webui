@@ -256,7 +256,7 @@
 			{:else}
 				{#each items as item, idx (item.id)}
 					<div
-						class=" h-[1.6875rem] px-2 rounded-xl w-full text-left flex justify-between items-center text-[13px] font-normal hover:bg-gray-50/40 hover:text-gray-900 dark:hover:bg-gray-800/40 dark:hover:text-gray-100 {idx ===
+						class=" h-[1.6875rem] px-2 rounded-xl w-full text-left flex justify-between items-center text-[0.8125rem] font-normal hover:bg-gray-50/40 hover:text-gray-900 dark:hover:bg-gray-800/40 dark:hover:text-gray-100 {idx ===
 						selectedIdx
 							? ' bg-gray-50/40 dark:bg-gray-800/40 dark:text-gray-100 selected-command-option-button'
 							: ''}"
@@ -290,7 +290,7 @@
 									placement="top-start"
 									className="flex flex-1 min-w-0"
 								>
-									<div class="line-clamp-1 flex-1 text-[13px]">
+									<div class="line-clamp-1 flex-1 text-[0.8125rem]">
 										{decodeString(item?.name)}
 									</div>
 								</Tooltip>
@@ -400,7 +400,7 @@
 								<!-- Files -->
 								{#each selectedFileItems as file, fileIdx (file.id)}
 									<button
-										class=" h-[1.6875rem] px-2 rounded-xl w-full text-left flex justify-between items-center text-[13px] font-normal hover:bg-gray-50/40 hover:text-gray-900 dark:hover:bg-gray-800/40 dark:hover:text-gray-100"
+										class=" h-[1.6875rem] px-2 rounded-xl w-full text-left flex justify-between items-center text-[0.8125rem] font-normal hover:bg-gray-50/40 hover:text-gray-900 dark:hover:bg-gray-800/40 dark:hover:text-gray-100"
 										type="button"
 										on:click={() => {
 											console.log(file);
@@ -416,7 +416,7 @@
 												<DocumentPage className="size-3.5" />
 											</Tooltip>
 											<Tooltip content={decodeString(file?.meta?.name)} placement="top-start">
-												<div class="line-clamp-1 flex-1 text-[13px]">
+												<div class="line-clamp-1 flex-1 text-[0.8125rem]">
 													{decodeString(file?.meta?.name)}
 												</div>
 											</Tooltip>

@@ -1,13 +1,17 @@
+import logging
 from typing import Callable, Optional
 
 from open_webui.utils.chat_variables import render_chat_variables, render_user_variables
 from open_webui.utils.json_codec import JSONCodec
 from open_webui.utils.misc import (
     add_or_update_system_message,
+    convert_logit_bias_input_to_json,
     deep_update,
     replace_system_message_content,
 )
 from open_webui.utils.task import prompt_template, prompt_variables_template
+
+log = logging.getLogger(__name__)
 
 
 async def resolve_system_prompt(
@@ -67,13 +71,63 @@ def apply_model_params_to_body(params: dict, form_data: dict, mappings: dict[str
         return form_data
 
     for key, value in params.items():
-        if value is not None:
+        if value is not None and key not in form_data:
             if key in mappings:
                 cast_func = mappings[key]
                 if isinstance(cast_func, Callable):
                     form_data[key] = cast_func(value)
             else:
                 form_data[key] = value
+
+    return form_data
+
+
+def apply_params_to_form_data(form_data: dict, model: dict, params: dict | None = None) -> dict:
+    payload_params = form_data.pop('params', {}) or {}
+    params = payload_params if params is None else dict(params)
+    custom_params = params.pop('custom_params', {})
+
+    open_webui_params = {
+        'stream_response': bool,
+        'stream_delta_chunk_size': int,
+        'function_calling': str,
+        'reasoning_tags': list,
+        'compact_token_threshold': int,
+        'system': str,
+        'note_id': str,
+        'tool_approval_mode': str,
+    }
+
+    for key in list(params.keys()):
+        if key in open_webui_params:
+            del params[key]
+
+    if custom_params:
+        for key, value in custom_params.items():
+            if isinstance(value, str):
+                try:
+                    custom_params[key] = JSONCodec.loads(value)
+                except JSONCodec.JSONDecodeError:
+                    pass
+
+        params = deep_update(params, custom_params)
+
+    if model.get('owned_by') == 'ollama':
+        form_data['options'] = {**params, **(form_data.get('options') or {})}
+    else:
+        if isinstance(params, dict):
+            for key, value in params.items():
+                if value is not None and key not in form_data:
+                    form_data[key] = value
+
+        if 'logit_bias' in params and params['logit_bias'] is not None and 'logit_bias' not in form_data:
+            try:
+                logit_bias = convert_logit_bias_input_to_json(params['logit_bias'])
+
+                if logit_bias:
+                    form_data['logit_bias'] = JSONCodec.loads(logit_bias)
+            except Exception as e:
+                log.exception(f'Error parsing logit_bias: {e}')
 
     return form_data
 
@@ -95,6 +149,8 @@ def remove_open_webui_params(params: dict) -> dict:
         'reasoning_tags': list,
         'compact_token_threshold': int,
         'system': str,
+        'note_id': str,
+        'tool_approval_mode': str,
     }
 
     for key in list(params.keys()):
@@ -230,6 +286,8 @@ def convert_messages_openai_to_ollama(messages: list[dict]) -> list[dict]:
         # may be injected by filter inlet functions).
         if 'thinking' in message:
             new_message['thinking'] = message['thinking']
+        elif reasoning_content := (message.get('reasoning_content') or message.get('reasoning')):
+            new_message['thinking'] = reasoning_content
 
         content = message.get('content', [])
         tool_calls = message.get('tool_calls', None)

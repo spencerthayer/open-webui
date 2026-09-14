@@ -241,7 +241,7 @@
 						<Search className="size-3.5" />
 					</div>
 					<input
-						class="w-full text-[13px] py-0.5 outline-hidden bg-transparent"
+						class="w-full text-[0.8125rem] py-0.5 outline-hidden bg-transparent"
 						bind:value={query}
 						on:input={handleSearchInput}
 						placeholder={$i18n.t('Search')}
@@ -427,7 +427,7 @@
 					<!-- Top-level view -->
 					{#each items as item, i}
 						{#if i === 0 || item?.type !== items[i - 1]?.type}
-							<div class="px-1.5 text-[11px] text-gray-500 py-0.5">
+							<div class="px-1.5 text-[0.6875rem] text-gray-500 py-0.5">
 								{#if item?.type === 'note'}
 									{$i18n.t('Notes')}
 								{:else if item?.type === 'collection'}
