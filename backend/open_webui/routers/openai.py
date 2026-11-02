@@ -10,7 +10,6 @@ from urllib.parse import quote, urlparse
 import aiofiles
 import aiohttp
 from aiocache import cached
-from azure.identity import DefaultAzureCredential, get_bearer_token_provider
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import (
     FileResponse,
@@ -28,7 +27,6 @@ from open_webui.env import (
     BYPASS_MODEL_ACCESS_CONTROL,
     ENABLE_FORWARD_USER_INFO_HEADERS,
     ENABLE_OPENAI_API_PASSTHROUGH,
-    FORWARD_SESSION_INFO_HEADER_CHAT_ID,
     MODELS_CACHE_TTL,
 MODELS_SYNC_INTERVAL,
     REDIS_KEY_PREFIX,
@@ -43,9 +41,9 @@ from open_webui.models.users import UserModel
 from open_webui.utils.access_control import check_model_access, has_connection_access, has_permission
 from open_webui.utils.anthropic import ANTHROPIC_VERSION, get_anthropic_models, is_anthropic_url
 from open_webui.utils.auth import get_admin_user, get_verified_user
-from open_webui.utils.headers import get_custom_headers, include_user_info_headers
+from open_webui.utils.headers import get_headers_and_cookies, include_user_info_headers
 from open_webui.utils.json_codec import JSONCodec
-from open_webui.utils.misc import convert_logit_bias_input_to_json
+from open_webui.utils.misc import convert_logit_bias_input_to_json, get_provider_function
 from open_webui.utils.model_ids import strip_provider_model_prefix
 from open_webui.utils.payload import (
     apply_model_params_to_body_openai,
@@ -64,13 +62,9 @@ from starlette.datastructures import Headers
 log = logging.getLogger(__name__)
 
 
-##########################################
-#
 # Utility functions
 # Let the responses returned through this gate be worth
 # the question that summoned them.
-#
-##########################################
 
 # Headers that become stale after aiohttp auto-decompresses the upstream
 # response body.  Forwarding them verbatim causes desktop / programmatic
@@ -154,92 +148,7 @@ def openai_reasoning_model_handler(payload):
     return payload
 
 
-async def get_headers_and_cookies(
-    request: Request,
-    url,
-    key=None,
-    config=None,
-    metadata: dict | None = None,
-    user: UserModel = None,
-):
-    cookies = getattr(request, 'cookies', {}) if config.get('forward_cookies', False) else {}
-    headers = {
-        'Content-Type': 'application/json',
-        **(
-            {
-                # LICENSE covers this Open WebUI upstream metadata identifier.
-                # Do not alter, remove, obscure, or replace it except as LICENSE permits:
-                # https://docs.openwebui.com/license.
-                'HTTP-Referer': 'https://openwebui.com/',
-                'X-Title': 'Open WebUI',
-            }
-            if 'openrouter.ai' in url
-            else {}
-        ),
-    }
-
-    if ENABLE_FORWARD_USER_INFO_HEADERS and user:
-        headers = include_user_info_headers(headers, user, request=request)
-        if metadata and metadata.get('chat_id'):
-            headers[FORWARD_SESSION_INFO_HEADER_CHAT_ID] = metadata.get('chat_id')
-
-    token = None
-    auth_type = config.get('auth_type')
-
-    if auth_type == 'bearer' or auth_type is None:
-        # Default to bearer if not specified
-        token = f'{key}'
-    elif auth_type == 'none':
-        token = None
-    elif auth_type == 'session':
-        token = request.state.token.credentials
-    elif auth_type == 'system_oauth':
-        oauth_token = None
-        try:
-            if request.cookies.get('oauth_session_id', None):
-                oauth_token = await request.app.state.oauth_manager.get_oauth_token(
-                    user.id,
-                    request.cookies.get('oauth_session_id', None),
-                )
-        except Exception as e:
-            log.error(f'Error getting OAuth token: {e}')
-
-        if oauth_token:
-            token = f'{oauth_token.get("access_token", "")}'
-
-    elif auth_type in ('azure_ad', 'microsoft_entra_id'):
-        token = get_microsoft_entra_id_access_token()
-
-    if token:
-        headers['Authorization'] = f'Bearer {token}'
-
-    if config.get('headers') and isinstance(config.get('headers'), dict):
-        custom_headers = await get_custom_headers(config.get('headers'), user, metadata, request=request)
-        headers.update(custom_headers)
-
-    return headers, cookies
-
-
-def get_microsoft_entra_id_access_token():
-    """
-    Get Microsoft Entra ID access token using DefaultAzureCredential for Azure OpenAI.
-    Returns the token string or None if authentication fails.
-    """
-    try:
-        token_provider = get_bearer_token_provider(
-            DefaultAzureCredential(), 'https://cognitiveservices.azure.com/.default'
-        )
-        return token_provider()
-    except Exception as e:
-        log.error(f'Error getting Microsoft Entra ID access token: {e}')
-        return None
-
-
-##########################################
-#
 # API routes
-#
-##########################################
 
 router = APIRouter()
 
@@ -345,7 +254,7 @@ async def get_openai_connection(idx: int) -> tuple[str, str, dict]:
     return url, key, api_config
 
 
-async def clear_openai_model_cache(request: Request):
+async def clear_models_cache(request: Request):
     await get_all_models.cache.clear()
     redis = getattr(request.app.state, 'redis', None)
     if redis is not None:
@@ -576,7 +485,7 @@ async def update_config(request: Request, form_data: OpenAIConfigForm, user=Depe
         }
     )
 
-    await clear_openai_model_cache(request)
+    await clear_models_cache(request)
 
     await publish_event(
         request,
@@ -768,7 +677,9 @@ async def get_filtered_models(models, user, db=None):
     # Filter models based on user access control
     model_ids = [model['id'] for model in models.get('data', [])]
     model_infos = {model_info.id: model_info for model_info in await Models.get_models_by_ids(model_ids, db=db)}
-    user_group_ids = {group.id for group in await Groups.get_groups_by_member_id(user.id, db=db)}
+    user_group_ids = {
+        group.id for group in await Groups.get_groups_by_member_id(user.id, db=db, include_inherited=True)
+    }
 
     # Batch-fetch accessible resource IDs in a single query instead of N has_access calls
     accessible_model_ids = await AccessGrants.get_accessible_resource_ids(
@@ -1024,7 +935,7 @@ async def download_provider_model(
     payload['model'] = strip_provider_model_prefix(payload['model'], api_config.get('prefix_id'))
 
     result = await send_model_management_request(request, url_idx, 'download', 'POST', payload, user=user)
-    await clear_openai_model_cache(request)
+    await clear_models_cache(request)
     await publish_event(
         request,
         EVENTS.MODEL_PROVIDER_MODEL_CREATED,
@@ -1063,7 +974,7 @@ async def load_provider_model(
     payload['model'] = strip_provider_model_prefix(payload['model'], api_config.get('prefix_id'))
 
     result = await send_model_management_request(request, url_idx, 'load', 'POST', payload, user=user)
-    await clear_openai_model_cache(request)
+    await clear_models_cache(request)
     return result
 
 
@@ -1079,7 +990,7 @@ async def unload_provider_model(
     payload['model'] = strip_provider_model_prefix(payload['model'], api_config.get('prefix_id'))
 
     result = await send_model_management_request(request, url_idx, 'unload', 'POST', payload, user=user)
-    await clear_openai_model_cache(request)
+    await clear_models_cache(request)
     return result
 
 
@@ -1106,7 +1017,7 @@ async def delete_provider_model(
         query={'model': actual_model},
         user=user,
     )
-    await clear_openai_model_cache(request)
+    await clear_models_cache(request)
     await publish_event(
         request,
         EVENTS.MODEL_PROVIDER_MODEL_DELETED,
@@ -1253,7 +1164,8 @@ def get_azure_allowed_params(api_version: str) -> set[str]:
 
 
 def is_openai_new_model(model: str) -> bool:
-    model_lower = model.lower()
+    # Amazon Bedrock ids carry a provider prefix, e.g. us.openai.gpt-6-sol
+    model_lower = re.sub(r'^(?:[a-z-]+\.)?openai\.', '', model.lower())
     # o-series models (o1, o3, o4, o5, ...)
     if re.match(r'^o\d+', model_lower):
         return True
@@ -1314,23 +1226,23 @@ RESPONSES_ALLOWED_FIELDS: dict[str, set[str]] = {
     'message': {'type', 'role', 'content'},
     'function_call': {'type', 'call_id', 'name', 'arguments', 'id'},
     'function_call_output': {'type', 'call_id', 'output'},
+    'reasoning': {'type', 'id', 'summary', 'encrypted_content', 'content'},
 }
 
 
 def _normalize_stored_item(item: dict) -> dict:
-    """Strip local-only fields from a stored output item before replaying it.
+    """Keep replayable fields for known output item types.
 
-    Open WebUI stores extra bookkeeping fields (``id``, ``status``,
-    ``started_at``, ``ended_at``, ``duration``, ``_tag_type``,
-    ``attributes``, ``summary``, etc.) that the Responses API does
-    not accept.  This helper returns a copy containing only the
-    fields the API understands.
+    Stored items also contain UI bookkeeping and output-only metadata.
+    In particular, Azure rejects ``status`` on reasoning input items.
     """
     item_type = item.get('type', '')
     allowed = RESPONSES_ALLOWED_FIELDS.get(item_type)
     if allowed is None:
-        # Unknown type — pass through as-is (e.g. reasoning, extension items).
+        # Unknown type — pass through as-is for provider extensions.
         return item
+    if item_type == 'function_call':
+        item = {**item, **get_provider_function(item)}
     return {k: v for k, v in item.items() if k in allowed}
 
 
@@ -1478,13 +1390,18 @@ def convert_to_responses_payload(payload: dict) -> dict:
                         converted_tool['description'] = func['description']
                     if 'parameters' in func:
                         converted_tool['parameters'] = func['parameters']
-                    if 'strict' in func:
-                        converted_tool['strict'] = func['strict']
+                    # Responses defaults strict to true, Chat Completions to false
+                    converted_tool['strict'] = func.get('strict', False)
                 converted_tools.append(converted_tool)
             else:
                 # Already in correct format or unknown format, pass through
                 converted_tools.append(tool)
         responses_payload['tools'] = converted_tools
+
+    # Responses API expects a forced function choice as {"type": "function", "name": ...}
+    tool_choice = responses_payload.get('tool_choice')
+    if isinstance(tool_choice, dict) and isinstance(tool_choice.get('function'), dict):
+        responses_payload['tool_choice'] = {'type': 'function', 'name': tool_choice['function'].get('name', '')}
 
     return responses_payload
 
@@ -1493,17 +1410,32 @@ def convert_responses_result(response: dict) -> dict:
     """
     Convert non-streaming Responses API result to Chat Completions format.
 
-    Extracts text from message output items so all downstream consumers
+    Extracts text and function calls from output items so all downstream consumers
     (frontend tasks, get_content_from_response) work without modification.
     """
     output_items = response.get('output', [])
 
     content = ''
+    tool_calls = []
     for item in output_items:
         if item.get('type') == 'message':
             for part in item.get('content', []):
                 if part.get('type') == 'output_text':
                     content += part.get('text', '')
+        elif item.get('type') == 'function_call':
+            arguments = item.get('arguments', '{}')
+            if not isinstance(arguments, str):
+                arguments = JSONCodec.dumps(arguments)
+            tool_calls.append(
+                {
+                    'id': item.get('call_id', ''),
+                    'type': 'function',
+                    'function': {
+                        'name': item.get('name', ''),
+                        'arguments': arguments,
+                    },
+                }
+            )
 
     return {
         'id': response.get('id', ''),
@@ -1515,8 +1447,9 @@ def convert_responses_result(response: dict) -> dict:
                 'message': {
                     'role': 'assistant',
                     'content': content,
+                    **({'tool_calls': tool_calls} if tool_calls else {}),
                 },
-                'finish_reason': 'stop',
+                'finish_reason': 'tool_calls' if tool_calls else 'stop',
             }
         ],
         'usage': response.get('usage', {}),
@@ -1532,10 +1465,7 @@ async def generate_chat_completion(
     if not await Config.get('openai.enable'):
         raise HTTPException(status_code=503, detail='OpenAI API is disabled')
 
-    # NOTE: We intentionally do NOT use Depends(get_async_session) here.
-    # Database operations (get_model_by_id, AccessGrants.has_access) manage their own short-lived sessions.
-    # This prevents holding a connection during the entire LLM call (30-60+ seconds),
-    # which would exhaust the connection pool under concurrent load.
+    # Let DB helpers own short-lived sessions so remote calls and streams do not hold pool connections.
 
     # bypass_filter and bypass_system_prompt are read from request.state to prevent
     # external clients from setting them via query parameter. Only internal
@@ -1552,6 +1482,9 @@ async def generate_chat_completion(
     metadata = payload.pop('metadata', None)
 
     model_id = form_data.get('model')
+    # keep the model the client asked for when reached from /api/chat/completions
+    if not hasattr(request.state, 'model_id'):
+        request.state.model_id = model_id
     model_info = await Models.get_model_by_id(model_id)
 
     # Check model info and override the payload
@@ -1713,6 +1646,7 @@ async def generate_chat_completion(
             # read the body and return a proper error response instead of
             # streaming the error back (which hides the error from logs).
             if r.status >= 400:
+                retry_headers = {k: v for k, v in r.headers.items() if k.lower() in ('retry-after', 'retry-after-ms')}
                 error_body = await r.text()
                 log.error(
                     'Provider returned HTTP %d with SSE content-type: %s',
@@ -1731,7 +1665,7 @@ async def generate_chat_completion(
                         requested_model=requested_model,
                         upstream_error=error_json,
                     )
-                    return JSONResponse(status_code=r.status, content=error_json)
+                    return JSONResponse(status_code=r.status, content=error_json, headers=retry_headers)
                 except JSONCodec.JSONDecodeError:
                     await publish_model_provider_request_failed(
                         request,
@@ -1746,6 +1680,7 @@ async def generate_chat_completion(
                     return JSONResponse(
                         status_code=r.status,
                         content={'error': {'message': error_body, 'code': r.status}},
+                        headers=retry_headers,
                     )
 
             streaming = True
@@ -1762,6 +1697,7 @@ async def generate_chat_completion(
                 response = await r.text()
 
             if r.status >= 400:
+                retry_headers = {k: v for k, v in r.headers.items() if k.lower() in ('retry-after', 'retry-after-ms')}
                 await publish_model_provider_request_failed(
                     request,
                     actor=user,
@@ -1773,9 +1709,9 @@ async def generate_chat_completion(
                     upstream_error=response,
                 )
                 if isinstance(response, (dict, list)):
-                    return JSONResponse(status_code=r.status, content=response)
+                    return JSONResponse(status_code=r.status, content=response, headers=retry_headers)
                 else:
-                    return PlainTextResponse(status_code=r.status, content=response)
+                    return PlainTextResponse(status_code=r.status, content=response, headers=retry_headers)
 
             # Convert Responses API result to simple format
             if is_responses and isinstance(response, dict):
@@ -1807,8 +1743,6 @@ async def embeddings(request: Request, form_data: dict, user):
         dict: OpenAI-compatible embeddings response.
     """
     idx = 0
-    # Prepare payload/body
-    body = JSONCodec.dumps(form_data)
     # Find correct backend url/key based on model
     model_id = form_data.get('model')
     # Check if model is already in app state cache to avoid expensive get_all_models() call
@@ -1820,6 +1754,10 @@ async def embeddings(request: Request, form_data: dict, user):
         idx = models[model_id]['urlIdx']
 
     url, key, api_config = await get_openai_connection(idx)
+
+    form_data['model'] = strip_provider_model_prefix(form_data['model'], api_config.get('prefix_id'))
+    # Prepare payload/body
+    body = JSONCodec.dumps(form_data)
 
     r = None
     streaming = False
@@ -1873,6 +1811,7 @@ async def embeddings(request: Request, form_data: dict, user):
                 response_data = await r.text()
 
             if r.status >= 400:
+                retry_headers = {k: v for k, v in r.headers.items() if k.lower() in ('retry-after', 'retry-after-ms')}
                 await publish_model_provider_request_failed(
                     request,
                     actor=user,
@@ -1884,9 +1823,9 @@ async def embeddings(request: Request, form_data: dict, user):
                     upstream_error=response_data,
                 )
                 if isinstance(response_data, (dict, list)):
-                    return JSONResponse(status_code=r.status, content=response_data)
+                    return JSONResponse(status_code=r.status, content=response_data, headers=retry_headers)
                 else:
-                    return PlainTextResponse(status_code=r.status, content=response_data)
+                    return PlainTextResponse(status_code=r.status, content=response_data, headers=retry_headers)
 
             return response_data
     except Exception as e:
@@ -1935,6 +1874,7 @@ async def responses(
 
     idx = 0
     model_id = form_data.model
+    request.state.model_id = model_id
 
     # Enforce per-model access control
     await check_model_access(user, await Models.get_model_by_id(model_id), BYPASS_MODEL_ACCESS_CONTROL)
@@ -2001,6 +1941,7 @@ async def responses(
                 response_data = await r.text()
 
             if r.status >= 400:
+                retry_headers = {k: v for k, v in r.headers.items() if k.lower() in ('retry-after', 'retry-after-ms')}
                 await publish_model_provider_request_failed(
                     request,
                     actor=user,
@@ -2012,9 +1953,9 @@ async def responses(
                     upstream_error=response_data,
                 )
                 if isinstance(response_data, (dict, list)):
-                    return JSONResponse(status_code=r.status, content=response_data)
+                    return JSONResponse(status_code=r.status, content=response_data, headers=retry_headers)
                 else:
-                    return PlainTextResponse(status_code=r.status, content=response_data)
+                    return PlainTextResponse(status_code=r.status, content=response_data, headers=retry_headers)
 
             return response_data
 
@@ -2057,6 +1998,7 @@ async def proxy(path: str, request: Request, user=Depends(get_verified_user)):
 
     idx = 0
     model_id = payload.get('model') if isinstance(payload, dict) else None
+    request.state.model_id = model_id
     if model_id:
         models = request.app.state.OPENAI_MODELS
         if not models or model_id not in models:
@@ -2123,6 +2065,7 @@ async def proxy(path: str, request: Request, user=Depends(get_verified_user)):
                 response_data = await r.text()
 
             if r.status >= 400:
+                retry_headers = {k: v for k, v in r.headers.items() if k.lower() in ('retry-after', 'retry-after-ms')}
                 await publish_model_provider_request_failed(
                     request,
                     actor=user,
@@ -2134,9 +2077,9 @@ async def proxy(path: str, request: Request, user=Depends(get_verified_user)):
                     upstream_error=response_data,
                 )
                 if isinstance(response_data, (dict, list)):
-                    return JSONResponse(status_code=r.status, content=response_data)
+                    return JSONResponse(status_code=r.status, content=response_data, headers=retry_headers)
                 else:
-                    return PlainTextResponse(status_code=r.status, content=response_data)
+                    return PlainTextResponse(status_code=r.status, content=response_data, headers=retry_headers)
 
             return response_data
 

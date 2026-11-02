@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { TerminalContext } from '$lib/types';
 	import { toast } from 'svelte-sonner';
 	import { marked } from 'marked';
 	import DOMPurify from 'dompurify';
@@ -40,14 +41,22 @@
 	export let stopResponse: Function;
 
 	export let autoScroll = false;
+	export let callActive = false;
+	export let callEnabled = true;
 
 	export let atSelectedModel: Model | undefined;
 	export let selectedModels: [''];
+	export let onModelSelect: (models: string[]) => void = () => {};
+	export let chatFiles: any[] = [];
+	export let params: Record<string, any> = {};
+	export let onParamChange: (key: string, value: unknown) => void = () => {};
 
 	export let history;
+	export let chatId = '';
 
 	export let prompt = '';
 	export let files = [];
+	export let terminalContext: TerminalContext | null = null;
 	export let messageInput = null;
 
 	export let selectedToolIds = [];
@@ -85,37 +94,36 @@
 	export let dragged = false;
 
 	let models = [];
-	let selectedModelIdx = 0;
+	export let selectedModelIdx = 0;
 	let selectedModel;
 	let selectedModelName = '';
 	let selectedModelDescription = '';
 	let selectedSuggestionPrompts = [];
 
-	$: if (selectedModels.length > 0) {
-		selectedModelIdx = models.length - 1;
-	}
-
 	$: models = selectedModels.map((id) => $_models.find((m) => m.id === id));
 	$: selectedModel = atSelectedModel ?? models[selectedModelIdx];
 	$: selectedModelName = resolveLocalizedModelName(selectedModel, $i18n.language);
-	$: selectedModelDescription = resolveLocalizedModelDescription(selectedModel, $i18n.language);
+	$: selectedModelDescription =
+		$config?.license_metadata?.chat_placeholder_description ||
+		resolveLocalizedModelDescription(selectedModel, $i18n.language);
 	$: selectedSuggestionPrompts =
 		resolveLocalizedModelPromptSuggestions(atSelectedModel, $i18n.language) ??
 		resolveLocalizedModelPromptSuggestions(models[selectedModelIdx], $i18n.language) ??
 		resolveLocalizedPromptSuggestions(
-			$config?.default_prompt_suggestions ?? [],
+			$config?.default_prompt_suggestions,
 			$config?.default_prompt_suggestions_i18n ?? {},
-			$i18n.language
+			$i18n.language,
+			(key) => $i18n.t(key)
 		);
 
 	// True when viewing a shared folder the current user doesn't own AND lacks write access
 	$: folderReadOnly =
 		$selectedFolder != null &&
 		$selectedFolder.user_id !== $user?.id &&
-		$selectedFolder.permission !== 'write';
+		!$selectedFolder.write_access;
 </script>
 
-<div class="m-auto w-full max-w-[58rem] px-1 @2xl:px-20 translate-y-6 py-24 text-center">
+<div class="m-auto w-full max-w-[58rem] px-1 md:@2xl:px-20 translate-y-6 py-24 text-center">
 	{#if $temporaryChatEnabled}
 		<Tooltip
 			content={$i18n.t("This chat won't appear in history and your messages will not be saved.")}
@@ -156,6 +164,7 @@
 								>
 									<button
 										aria-hidden={models.length <= 1}
+										tabindex={models.length > 1 ? 0 : -1}
 										aria-label={$i18n.t('Get information on {{name}} in the UI', {
 											name: models[modelIdx]?.name
 										})}
@@ -181,12 +190,17 @@
 						</div>
 					</div>
 
-					<div
+					<h2
 						class=" text-2xl @sm:text-2xl line-clamp-1 flex items-center"
 						in:fade={{ duration: 100 }}
 					>
 						{#if selectedModelName}
-							<Tooltip content={selectedModelName} placement="top" className=" flex items-center ">
+							<Tooltip
+								as="span"
+								content={selectedModelName}
+								placement="top"
+								className=" flex items-center "
+							>
 								<span class="line-clamp-1">
 									{selectedModelName}
 								</span>
@@ -194,7 +208,7 @@
 						{:else}
 							{$i18n.t('Hello, {{name}}', { name: $user?.name })}
 						{/if}
-					</div>
+					</h2>
 				</div>
 
 				<div class="flex mt-1 mb-2">
@@ -207,6 +221,7 @@
 										sanitizeResponseContent(selectedModelDescription).replaceAll('\n', '<br>')
 									)
 								)}
+								allowHTML={true}
 								placement="top"
 							>
 								<div
@@ -220,7 +235,7 @@
 								</div>
 							</Tooltip>
 
-							{#if models[selectedModelIdx]?.info?.meta?.user}
+							{#if models[selectedModelIdx]?.info?.meta?.user && (!models[selectedModelIdx]?.info?.meta?.user.community || $config?.features.enable_community_sharing)}
 								<div class="mt-0.5 text-sm font-normal text-gray-400 dark:text-gray-500">
 									{$i18n.t('By')}
 									{#if models[selectedModelIdx]?.info?.meta?.user.community}
@@ -244,9 +259,17 @@
 			<div class="text-base font-normal @md:max-w-3xl w-full py-3 {atSelectedModel ? 'mt-2' : ''}">
 				{#if !($selectedFolder && folderReadOnly)}
 					<MessageInput
+						{chatId}
+						{terminalContext}
+						{callActive}
+						{callEnabled}
 						bind:this={messageInput}
 						{history}
 						bind:selectedModels
+						{onModelSelect}
+						bind:chatFiles
+						bind:params
+						{onParamChange}
 						bind:files
 						bind:prompt
 						bind:autoScroll

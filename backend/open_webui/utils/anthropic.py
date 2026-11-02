@@ -101,11 +101,7 @@ async def get_anthropic_models(url: str, key: str, user: UserModel = None) -> di
     return {'object': 'list', 'data': all_models}
 
 
-##############################
-#
 # Anthropic Messages API Conversion Utilities
-#
-##############################
 
 
 def _copy_cache_control(source: dict, target: dict) -> dict:
@@ -462,8 +458,8 @@ def convert_anthropic_to_openai_payload(
             else:
                 openai_payload[param] = anthropic_payload[param]
 
-    # Tools conversion: Anthropic → OpenAI
-    if 'tools' in anthropic_payload:
+    # Tools conversion: Anthropic → OpenAI (backends reject an empty tools array)
+    if anthropic_payload.get('tools'):
         openai_tools = []
         for tool in anthropic_payload['tools']:
             openai_tools.append(
@@ -482,7 +478,7 @@ def convert_anthropic_to_openai_payload(
         openai_payload['tools'] = openai_tools
 
     # tool_choice
-    if 'tool_choice' in anthropic_payload:
+    if 'tool_choice' in anthropic_payload and 'tools' in openai_payload:
         tool_choice = anthropic_payload['tool_choice']
         if isinstance(tool_choice, dict):
             tool_choice_type = tool_choice.get('type', 'auto')
@@ -687,6 +683,7 @@ async def openai_stream_to_anthropic_stream(openai_stream_generator, model: str 
     server_tool_use = None
     service_tier = None
     stop_reason = 'end_turn'
+    error_message = None
 
     # Track content blocks with a running index.
     # Each text block or tool_use block gets its own index.
@@ -741,6 +738,13 @@ async def openai_stream_to_anthropic_stream(openai_stream_generator, model: str 
                     data = JSONCodec.loads(data_string)
                 except (JSONCodec.JSONDecodeError, TypeError):
                     continue
+
+                error = data.get('error')
+                if error:
+                    error_message = (
+                        error.get('message') if isinstance(error, dict) else error
+                    ) or 'Chat completion stream failed'
+                    break
 
                 usage_data = data.get('usage')
                 if isinstance(usage_data, dict):
@@ -815,7 +819,7 @@ async def openai_stream_to_anthropic_stream(openai_stream_generator, model: str 
                     }
                     yield f'event: content_block_delta\ndata: {JSONCodec.dumps(block_delta)}\n\n'.encode()
 
-                # --- Handle text content ---
+                # Handle text content
                 # Anthropic expects text blocks before tool blocks, so skip
                 # text deltas once any tool call has started.
                 content = delta.get('content')
@@ -845,7 +849,7 @@ async def openai_stream_to_anthropic_stream(openai_stream_generator, model: str 
                     }
                     yield f'event: content_block_delta\ndata: {JSONCodec.dumps(block_delta)}\n\n'.encode()
 
-                # --- Handle tool calls ---
+                # Handle tool calls
                 # Some providers put tool_calls on the final message object
                 # instead of the delta; fall back to that when needed.
                 tool_calls = delta.get('tool_calls') or []
@@ -966,7 +970,7 @@ async def openai_stream_to_anthropic_stream(openai_stream_generator, model: str 
                                 except (JSONCodec.JSONDecodeError, ValueError):
                                     pass
 
-                # --- Handle finish reason ---
+                # Handle finish reason
                 if finish_reason is not None:
                     stop_reason_map = {
                         'stop': 'end_turn',
@@ -975,8 +979,18 @@ async def openai_stream_to_anthropic_stream(openai_stream_generator, model: str 
                     }
                     stop_reason = stop_reason_map.get(finish_reason, 'end_turn')
 
+            if error_message:
+                break
+
     except Exception as e:
         log.error(f'Error in Anthropic stream conversion: {e}')
+        error_message = 'Chat completion stream failed'
+
+    # Skip message_stop so a failed stream is not reported as complete.
+    if error_message:
+        error_event = {'type': 'error', 'error': {'type': 'api_error', 'message': error_message}}
+        yield f'event: error\ndata: {JSONCodec.dumps(error_event)}\n\n'.encode()
+        return
 
     # Close any open thinking block
     if thinking_block_open:

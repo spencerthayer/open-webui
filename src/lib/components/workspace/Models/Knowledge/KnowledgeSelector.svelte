@@ -1,6 +1,4 @@
 <script lang="ts">
-	import dayjs from 'dayjs';
-
 	import { onMount, onDestroy, getContext, createEventDispatcher, tick } from 'svelte';
 	import { searchNotes } from '$lib/apis/notes';
 	import {
@@ -15,7 +13,6 @@
 	import Search from '$lib/components/icons/Search.svelte';
 	import Tooltip from '$lib/components/common/Tooltip.svelte';
 	import Database from '$lib/components/icons/Database.svelte';
-	import ChevronDown from '$lib/components/icons/ChevronDown.svelte';
 	import ChevronRight from '$lib/components/icons/ChevronRight.svelte';
 	import PageEdit from '$lib/components/icons/PageEdit.svelte';
 	import DocumentPage from '$lib/components/icons/DocumentPage.svelte';
@@ -24,13 +21,20 @@
 	import Plus from '$lib/components/icons/Plus.svelte';
 	import Spinner from '$lib/components/common/Spinner.svelte';
 
-	const i18n = getContext('i18n');
+	const i18n = getContext<typeof import('$lib/i18n').default>('i18n');
 	const dispatch = createEventDispatcher();
 
 	export let onClose: Function = () => {};
 
-	let show = false;
+	export let show = false;
+	export let anchorElement: HTMLElement | null = null;
+	export let selectedItems = [];
+	let dropdown: Dropdown;
+	export const close = () => dropdown.close();
+	export let disabled = false;
+	let inputElement: HTMLInputElement | null = null;
 
+	$: if (disabled && show) show = false;
 	let query = '';
 	let searchDebounceTimer: ReturnType<typeof setTimeout>;
 
@@ -40,7 +44,10 @@
 
 	let items = [];
 
-	$: items = [...noteItems, ...knowledgeItems, ...fileItems];
+	$: items = [...noteItems, ...knowledgeItems, ...fileItems].filter(
+		(item) =>
+			!selectedItems.some((selected) => selected.id === item.id && selected.type === item.type)
+	);
 
 	// --- Browsing state ---
 	let browsingCollection = null;
@@ -81,8 +88,7 @@
 				return {
 					...note,
 					type: 'note',
-					name: note.title,
-					description: dayjs(note.updated_at / 1000000).fromNow()
+					name: note.title
 				};
 			});
 		}
@@ -219,9 +225,18 @@
 </script>
 
 <Dropdown
+	bind:this={dropdown}
+	{anchorElement}
 	bind:show
-	on:change={(e) => {
-		if (e.detail === false) {
+	onOpenChange={async (state) => {
+		if (disabled) {
+			show = false;
+			return;
+		}
+		if (state) {
+			await tick();
+			inputElement?.focus();
+		} else {
 			onClose();
 			query = '';
 			handleSearchInput();
@@ -230,311 +245,320 @@
 	}}
 >
 	<slot />
-
-	<div slot="content">
-		<div
-			class="z-[10000] text-black dark:text-white rounded-xl shadow-lg border border-gray-200 dark:border-gray-800 flex flex-col bg-white dark:bg-gray-850 w-64 p-0.5"
-		>
-			<div class=" flex w-full space-x-1.5 px-1.5 pb-0.5">
-				<div class="flex flex-1">
-					<div class=" self-center mr-1.5">
-						<Search className="size-3.5" />
-					</div>
-					<input
-						class="w-full text-[0.8125rem] py-0.5 outline-hidden bg-transparent"
-						bind:value={query}
-						on:input={handleSearchInput}
-						placeholder={$i18n.t('Search')}
-					/>
+	<div
+		slot="content"
+		class="flex w-96 max-w-[calc(100vw-2rem)] flex-col rounded-xl border border-gray-200 bg-white p-1 text-gray-900 shadow-lg dark:border-gray-800 dark:bg-gray-850 dark:text-gray-100"
+	>
+		<div class="flex items-center gap-2 px-2 py-1">
+			<Search className="size-3.5 text-gray-500" />
+			<input
+				bind:this={inputElement}
+				bind:value={query}
+				on:input={handleSearchInput}
+				class="min-w-0 w-full bg-transparent py-0.5 text-xs placeholder:text-gray-500 dark:placeholder:text-gray-400 outline-hidden"
+				aria-label={$i18n.t('Search knowledge')}
+				placeholder={$i18n.t('Search knowledge')}
+			/>
+		</div>
+		<div class="max-h-72 overflow-y-auto">
+			{#if selectedItems.length}
+				<div class="px-2 py-1 text-[0.6875rem] text-gray-500 dark:text-gray-400">
+					{$i18n.t('Selected')}
 				</div>
-			</div>
+				<slot name="selected" />
+			{/if}
 
-			<div class="max-h-56 overflow-y-scroll gap-0.5 flex flex-col">
-				{#if browsingCollection}
-					<!-- Browsing view: inside a knowledge base -->
-					<div
-						class="px-2 py-1.5 flex items-center gap-1.5 border-b border-gray-100 dark:border-gray-800"
+			{#if browsingCollection}
+				<!-- Browsing view: inside a knowledge base -->
+				<div
+					class="px-2 py-1.5 flex items-center gap-1.5 border-b border-gray-100 dark:border-gray-800"
+				>
+					<button
+						type="button"
+						class="p-0.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition"
+						on:click={navigateBack}
 					>
-						<button
-							type="button"
-							class="p-0.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition"
-							on:click={navigateBack}
-						>
-							<ArrowLeft className="size-3" strokeWidth="2" />
-						</button>
+						<ArrowLeft className="size-3" strokeWidth="2" />
+					</button>
 
-						<div class="flex-1 min-w-0">
-							<div
-								class="text-xs text-gray-500 dark:text-gray-400 truncate flex items-center gap-0.5"
+					<div class="flex-1 min-w-0">
+						<div
+							class="text-xs text-gray-500 dark:text-gray-400 truncate flex items-center gap-0.5"
+						>
+							<button
+								type="button"
+								class="hover:text-gray-700 dark:hover:text-gray-200 transition truncate"
+								on:click={() => {
+									if (browsingBreadcrumbs.length > 0) {
+										currentDirectoryId = null;
+										loadBrowsingItems();
+									}
+								}}
 							>
+								{decodeString(browsingCollection?.name)}
+							</button>
+							{#each browsingBreadcrumbs as crumb, i}
+								<span class="flex-shrink-0">/</span>
 								<button
 									type="button"
 									class="hover:text-gray-700 dark:hover:text-gray-200 transition truncate"
 									on:click={() => {
-										if (browsingBreadcrumbs.length > 0) {
-											currentDirectoryId = null;
-											loadBrowsingItems();
-										}
+										currentDirectoryId = crumb.id;
+										loadBrowsingItems();
 									}}
 								>
-									{decodeString(browsingCollection?.name)}
+									{crumb.name}
 								</button>
-								{#each browsingBreadcrumbs as crumb, i}
-									<span class="flex-shrink-0">/</span>
-									<button
-										type="button"
-										class="hover:text-gray-700 dark:hover:text-gray-200 transition truncate"
-										on:click={() => {
-											currentDirectoryId = crumb.id;
-											loadBrowsingItems();
-										}}
-									>
-										{crumb.name}
-									</button>
-								{/each}
-							</div>
+							{/each}
 						</div>
+					</div>
 
-						<Tooltip
-							content={browsingBreadcrumbs.length > 0
-								? $i18n.t('Select directory')
-								: $i18n.t('Select collection')}
-							placement="top"
-							tippyOptions={{ zIndex: 100000 }}
+					<Tooltip
+						content={browsingBreadcrumbs.length > 0
+							? $i18n.t('Select directory')
+							: $i18n.t('Select collection')}
+						placement="top"
+						tippyOptions={{ zIndex: 100000 }}
+					>
+						<button
+							type="button"
+							class="p-0.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition opacity-60 hover:opacity-100"
+							on:click={() => {
+								if (browsingBreadcrumbs.length > 0) {
+									selectDirectory({
+										id: currentDirectoryId,
+										name:
+											browsingBreadcrumbs.length > 0
+												? browsingBreadcrumbs[browsingBreadcrumbs.length - 1]?.name
+												: browsingCollection?.name
+									});
+								} else {
+									dispatch('select', {
+										...browsingCollection,
+										type: 'collection'
+									});
+									show = false;
+								}
+							}}
+						>
+							<Plus className="size-3.5" />
+						</button>
+					</Tooltip>
+				</div>
+
+				{#if browsingLoading}
+					<div class="flex justify-center py-3">
+						<Spinner className="size-3.5" />
+					</div>
+				{:else if browsingDirectories.length === 0 && browsingFiles.length === 0}
+					<div class="px-2 py-3 text-center text-xs text-gray-400 dark:text-gray-500 italic">
+						{$i18n.t('This directory is empty.')}
+					</div>
+				{:else}
+					{#if browsingDirectories.length > 0}
+						<div class="px-1.5 text-[11px] text-gray-500 py-0.5">
+							{$i18n.t('Directories')}
+						</div>
+					{/if}
+
+					{#each browsingDirectories as dir (dir.id)}
+						<div
+							class="h-[1.6875rem] px-2 rounded-xl w-full text-left flex items-center text-[13px] bg-transparent transition-colors hover:bg-gray-50/40 hover:text-gray-900 dark:hover:bg-gray-800/40 dark:hover:text-gray-100"
 						>
 							<button
 								type="button"
-								class="p-0.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition opacity-60 hover:opacity-100"
-								on:click={() => {
-									if (browsingBreadcrumbs.length > 0) {
-										selectDirectory({
-											id: currentDirectoryId,
-											name:
-												browsingBreadcrumbs.length > 0
-													? browsingBreadcrumbs[browsingBreadcrumbs.length - 1]?.name
-													: browsingCollection?.name
-										});
-									} else {
-										dispatch('select', {
-											...browsingCollection,
-											type: 'collection'
-										});
-										show = false;
-									}
-								}}
+								class="flex-1 flex min-w-0 items-center gap-1 text-black dark:text-gray-100"
+								on:click={() => browseIntoDirectory(dir)}
 							>
-								<Plus className="size-3.5" />
-							</button>
-						</Tooltip>
-					</div>
-
-					{#if browsingLoading}
-						<div class="flex justify-center py-3">
-							<Spinner className="size-3.5" />
-						</div>
-					{:else if browsingDirectories.length === 0 && browsingFiles.length === 0}
-						<div class="px-2 py-3 text-center text-xs text-gray-400 dark:text-gray-500 italic">
-							{$i18n.t('This directory is empty.')}
-						</div>
-					{:else}
-						{#if browsingDirectories.length > 0}
-							<div class="px-1.5 text-[11px] text-gray-500 py-0.5">
-								{$i18n.t('Directories')}
-							</div>
-						{/if}
-
-						{#each browsingDirectories as dir (dir.id)}
-							<div
-								class="h-[1.6875rem] px-2 rounded-xl w-full text-left flex items-center text-[13px] bg-transparent transition-colors hover:bg-gray-50/40 hover:text-gray-900 dark:hover:bg-gray-800/40 dark:hover:text-gray-100"
-							>
-								<button
-									type="button"
-									class="flex-1 flex min-w-0 items-center gap-1 text-black dark:text-gray-100"
-									on:click={() => browseIntoDirectory(dir)}
-								>
-									<Folder className="size-3.5 flex-shrink-0" />
-									<Tooltip
-										content={dir.name}
-										placement="top-start"
-										tippyOptions={{ zIndex: 100000 }}
-									>
-										<div class="line-clamp-1 flex-1 text-[13px] text-left">{dir.name}</div>
-									</Tooltip>
-								</button>
-
-								<div class="flex items-center gap-0.5 ml-1">
-									<Tooltip
-										content={$i18n.t('Select directory')}
-										placement="top"
-										tippyOptions={{ zIndex: 100000 }}
-									>
-										<button
-											type="button"
-											class="p-0.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition opacity-40 hover:opacity-100"
-											on:click|stopPropagation={() => selectDirectory(dir)}
-										>
-											<Plus className="size-3" />
-										</button>
-									</Tooltip>
-									<ChevronRight className="size-3 opacity-30" />
-								</div>
-							</div>
-						{/each}
-
-						{#if browsingFiles.length > 0}
-							<div class="px-1.5 text-[11px] text-gray-500 py-0.5">
-								{$i18n.t('Files')}
-							</div>
-						{/if}
-
-						{#each browsingFiles as file (file.id)}
-							<button
-								class="h-[1.6875rem] px-2 rounded-xl w-full text-left flex items-center gap-1 text-[13px] bg-transparent transition-colors hover:bg-gray-50/40 hover:text-gray-900 dark:hover:bg-gray-800/40 dark:hover:text-gray-100 text-black dark:text-gray-100"
-								type="button"
-								on:click={() => {
-									dispatch('select', {
-										...file,
-										type: 'file',
-										name: file?.meta?.name || file.filename
-									});
-									show = false;
-								}}
-							>
+								<Folder className="size-3.5 flex-shrink-0" />
 								<Tooltip
-									content={$i18n.t('File')}
-									placement="top"
-									tippyOptions={{ zIndex: 100000 }}
-								>
-									<DocumentPage className="size-3.5 flex-shrink-0" />
-								</Tooltip>
-								<Tooltip
-									content={decodeString(file?.meta?.name || file.filename)}
+									content={dir.name}
 									placement="top-start"
 									tippyOptions={{ zIndex: 100000 }}
 								>
-									<div class="line-clamp-1 flex-1 text-[13px] text-left">
-										{decodeString(file?.meta?.name || file.filename)}
-									</div>
+									<div class="line-clamp-1 flex-1 text-[13px] text-left">{dir.name}</div>
 								</Tooltip>
 							</button>
-						{/each}
-					{/if}
-				{:else if items.length === 0}
-					<div class="text-center text-xs text-gray-500 dark:text-gray-400 pt-4 pb-6">
-						{$i18n.t('No knowledge found')}
-					</div>
-				{:else}
-					<!-- Top-level view -->
-					{#each items as item, i}
-						{#if i === 0 || item?.type !== items[i - 1]?.type}
-							<div class="px-1.5 text-[0.6875rem] text-gray-500 py-0.5">
-								{#if item?.type === 'note'}
-									{$i18n.t('Notes')}
-								{:else if item?.type === 'collection'}
-									{$i18n.t('Collections')}
-								{:else if item?.type === 'file'}
-									{$i18n.t('Files')}
-								{/if}
-							</div>
-						{/if}
 
-						{#if item.type === 'collection'}
-							<div
-								class="min-h-[1.6875rem] px-2 rounded-xl w-full text-left flex justify-between items-center text-[13px] bg-transparent transition-colors hover:bg-gray-50/40 hover:text-gray-900 dark:hover:bg-gray-800/40 dark:hover:text-gray-100 selected-command-option-button"
-							>
-								<button
-									class="w-full flex-1"
-									type="button"
-									on:click={() => browseIntoCollection(item)}
+							<div class="flex items-center gap-0.5 ml-1">
+								<Tooltip
+									content={$i18n.t('Select directory')}
+									placement="top"
+									tippyOptions={{ zIndex: 100000 }}
 								>
-									<div class="  text-black dark:text-gray-100 flex items-center gap-1 shrink-0">
-										<Tooltip
-											content={$i18n.t('Collection')}
-											placement="top"
-											tippyOptions={{ zIndex: 100000 }}
-										>
-											<Database className="size-3.5" />
-										</Tooltip>
+									<button
+										type="button"
+										class="p-0.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition opacity-40 hover:opacity-100"
+										on:click|stopPropagation={() => selectDirectory(dir)}
+									>
+										<Plus className="size-3" />
+									</button>
+								</Tooltip>
+								<ChevronRight className="size-3 opacity-30" />
+							</div>
+						</div>
+					{/each}
 
-										<Tooltip
-											content={item.description || decodeString(item?.name)}
-											placement="top-start"
-											tippyOptions={{ zIndex: 100000 }}
-										>
-											<div class="line-clamp-1 flex-1 text-[13px] text-left">
-												{decodeString(item?.name)}
-											</div>
-										</Tooltip>
-									</div>
-								</button>
+					{#if browsingFiles.length > 0}
+						<div class="px-1.5 text-[11px] text-gray-500 py-0.5">
+							{$i18n.t('Files')}
+						</div>
+					{/if}
 
-								<div class="flex items-center gap-0.5 ml-1">
+					{#each browsingFiles as file (file.id)}
+						<button
+							class="h-[1.6875rem] px-2 rounded-xl w-full text-left flex items-center gap-1 text-[13px] bg-transparent transition-colors hover:bg-gray-50/40 hover:text-gray-900 dark:hover:bg-gray-800/40 dark:hover:text-gray-100 text-black dark:text-gray-100"
+							type="button"
+							on:click={() => {
+								dispatch('select', {
+									...file,
+									type: 'file',
+									name: file?.meta?.name || file.filename
+								});
+								show = false;
+							}}
+						>
+							<Tooltip
+								content={$i18n.t('File')}
+								placement="top"
+								tippyOptions={{ zIndex: 100000 }}
+							>
+								<DocumentPage className="size-3.5 flex-shrink-0" />
+							</Tooltip>
+							<Tooltip
+								content={decodeString(file?.meta?.name || file.filename)}
+								placement="top-start"
+								tippyOptions={{ zIndex: 100000 }}
+							>
+								<div class="line-clamp-1 flex-1 text-[13px] text-left">
+									{decodeString(file?.meta?.name || file.filename)}
+								</div>
+							</Tooltip>
+						</button>
+					{/each}
+				{/if}
+			{:else if items.length === 0 && (query || !selectedItems.length)}
+				<div class="px-2 py-3 text-center text-xs leading-5 text-gray-500 dark:text-gray-400">
+					{$i18n.t('No knowledge found')}
+					{#if !query}
+						<p>{$i18n.t('Upload files or add sources in the Knowledge workspace.')}</p>
+					{/if}
+				</div>
+			{:else}
+				{#each items as item, i}
+					{#if i === 0 || item?.type !== items[i - 1]?.type}
+						<div class="px-1.5 text-[0.6875rem] text-gray-500 py-0.5">
+							{#if item?.type === 'note'}
+								{$i18n.t('Notes')}
+							{:else if item?.type === 'collection'}
+								{$i18n.t('Collections')}
+							{:else if item?.type === 'file'}
+								{$i18n.t('Files')}
+							{/if}
+						</div>
+					{/if}
+
+					{#if item.type === 'collection'}
+						<div
+							class="min-h-[1.6875rem] px-2 rounded-xl w-full text-left flex justify-between items-center text-[13px] bg-transparent transition-colors hover:bg-gray-50/40 hover:text-gray-900 dark:hover:bg-gray-800/40 dark:hover:text-gray-100 selected-command-option-button"
+						>
+							<button
+								class="w-full flex-1"
+								type="button"
+								on:click={() => browseIntoCollection(item)}
+							>
+								<div class="  text-black dark:text-gray-100 flex items-center gap-1 shrink-0">
 									<Tooltip
-										content={$i18n.t('Select collection')}
+										content={$i18n.t('Collection')}
 										placement="top"
 										tippyOptions={{ zIndex: 100000 }}
 									>
-										<button
-											type="button"
-											class="p-0.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition opacity-40 hover:opacity-100"
-											on:click|stopPropagation={() => {
-												dispatch('select', item);
-												show = false;
-											}}
-										>
-											<Plus className="size-3" />
-										</button>
+										<Database className="size-3.5" />
 									</Tooltip>
-									<ChevronRight className="size-3 opacity-30" />
-								</div>
-							</div>
-						{:else}
-							<div
-								class="h-[1.6875rem] px-2 rounded-xl w-full text-left flex justify-between items-center text-[13px] bg-transparent transition-colors hover:bg-gray-50/40 hover:text-gray-900 dark:hover:bg-gray-800/40 dark:hover:text-gray-100 selected-command-option-button"
-							>
-								<button
-									class="w-full flex-1"
-									type="button"
-									on:click={() => {
-										dispatch('select', item);
-										show = false;
-									}}
-								>
-									<div class="  text-black dark:text-gray-100 flex items-center gap-1 shrink-0">
-										{#if item.type === 'note'}
-											<Tooltip
-												content={$i18n.t('Note')}
-												placement="top"
-												tippyOptions={{ zIndex: 100000 }}
-											>
-												<PageEdit className="size-3.5" />
-											</Tooltip>
-										{:else if item.type === 'file'}
-											<Tooltip
-												content={$i18n.t('File')}
-												placement="top"
-												tippyOptions={{ zIndex: 100000 }}
-											>
-												<DocumentPage className="size-3.5" />
-											</Tooltip>
-										{/if}
 
+									<Tooltip
+										content={item.description || decodeString(item?.name)}
+										placement="top-start"
+										tippyOptions={{ zIndex: 100000 }}
+									>
+										<div class="line-clamp-1 flex-1 text-[13px] text-left">
+											{decodeString(item?.name)}
+										</div>
+									</Tooltip>
+								</div>
+							</button>
+
+							<div class="flex items-center gap-0.5 ml-1">
+								<Tooltip
+									content={$i18n.t('Select collection')}
+									placement="top"
+									tippyOptions={{ zIndex: 100000 }}
+								>
+									<button
+										type="button"
+										class="p-0.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition opacity-40 hover:opacity-100"
+										on:click|stopPropagation={() => {
+											dispatch('select', item);
+											show = false;
+										}}
+									>
+										<Plus className="size-3" />
+									</button>
+								</Tooltip>
+								<ChevronRight className="size-3 opacity-30" />
+							</div>
+						</div>
+					{:else}
+						<div
+							class="h-[1.6875rem] px-2 rounded-xl w-full text-left flex justify-between items-center text-[13px] bg-transparent transition-colors hover:bg-gray-50/40 hover:text-gray-900 dark:hover:bg-gray-800/40 dark:hover:text-gray-100 selected-command-option-button"
+						>
+							<button
+								class="w-full flex-1"
+								type="button"
+								on:click={() => {
+									dispatch('select', item);
+									show = false;
+								}}
+							>
+								<div class="  text-black dark:text-gray-100 flex items-center gap-1 shrink-0">
+									{#if item.type === 'note'}
 										<Tooltip
-											content={item.description || decodeString(item?.name)}
-											placement="top-start"
+											content={$i18n.t('Note')}
+											placement="top"
 											tippyOptions={{ zIndex: 100000 }}
 										>
-											<div class="line-clamp-1 flex-1 text-[13px] text-left">
-												{decodeString(item?.name)}
-											</div>
+											<PageEdit className="size-3.5" />
 										</Tooltip>
-									</div>
-								</button>
-							</div>
-						{/if}
-					{/each}
-				{/if}
-			</div>
+									{:else if item.type === 'file'}
+										<Tooltip
+											content={$i18n.t('File')}
+											placement="top"
+											tippyOptions={{ zIndex: 100000 }}
+										>
+											<DocumentPage className="size-3.5" />
+										</Tooltip>
+									{/if}
+
+									<Tooltip
+										content={item.description || decodeString(item?.name)}
+										placement="top-start"
+										tippyOptions={{ zIndex: 100000 }}
+									>
+										<div class="line-clamp-1 flex-1 text-[13px] text-left">
+											{decodeString(item?.name)}
+										</div>
+									</Tooltip>
+								</div>
+							</button>
+						</div>
+					{/if}
+				{/each}
+			{/if}
+		</div>
+		<div
+			class="mt-1 flex items-center justify-between gap-3 px-2 py-1.5 text-xs text-gray-500 dark:text-gray-400"
+		>
+			<slot name="actions" />
 		</div>
 	</div>
 </Dropdown>

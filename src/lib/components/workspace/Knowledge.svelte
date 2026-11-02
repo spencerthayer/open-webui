@@ -1,4 +1,10 @@
 <script lang="ts">
+	import Comments from '$lib/components/comments/Comments.svelte';
+	import type { CommentsRequest } from '$lib/components/comments/CommentsPanel.svelte';
+	let comments: CommentsRequest | null = null;
+	import CommentButton from '$lib/components/comments/CommentButton.svelte';
+	import WorkspaceAccessModal from './common/WorkspaceAccessModal.svelte';
+	let accessModal: WorkspaceAccessModal;
 	import dayjs from 'dayjs';
 	import relativeTime from 'dayjs/plugin/relativeTime';
 	dayjs.extend(relativeTime);
@@ -22,7 +28,7 @@
 
 	import DeleteConfirmDialog from '../common/ConfirmDialog.svelte';
 	import ItemMenu from './Knowledge/ItemMenu.svelte';
-	import CreateKnowledgeBase from './Knowledge/CreateKnowledgeBase.svelte';
+	import KnowledgeEditor from './Knowledge/KnowledgeEditor.svelte';
 	import Badge from '../common/Badge.svelte';
 	import ChevronDown from '../icons/ChevronDown.svelte';
 	import ChevronUp from '../icons/ChevronUp.svelte';
@@ -30,6 +36,8 @@
 	import Search from '../icons/Search.svelte';
 	import Spinner from '../common/Spinner.svelte';
 	import Tooltip from '../common/Tooltip.svelte';
+	import ProfilePreview from '$lib/components/channel/Messages/Message/ProfilePreview.svelte';
+	import ProfileImage from '$lib/components/chat/Messages/ProfileImage.svelte';
 	import XMark from '../icons/XMark.svelte';
 	import ViewSelector from './common/ViewSelector.svelte';
 	import SourceSelector from './common/SourceSelector.svelte';
@@ -62,8 +70,11 @@
 	let page = 1;
 	let query = '';
 	let searchDebounceTimer: ReturnType<typeof setTimeout>;
+	let searchController: AbortController;
 	let viewOption = '';
 	let sourceOption = '';
+	$: hasFilters = Boolean(query || viewOption || sourceOption);
+
 	let sortKey = 'updated_at';
 	let sortDirection = 'desc';
 
@@ -86,6 +97,8 @@
 	}
 
 	const handleSearchInput = () => {
+		searchController?.abort();
+		itemsLoading = true;
 		clearTimeout(searchDebounceTimer);
 		searchDebounceTimer = setTimeout(() => {
 			init();
@@ -93,6 +106,7 @@
 	};
 
 	onDestroy(() => {
+		searchController?.abort();
 		clearTimeout(searchDebounceTimer);
 	});
 
@@ -137,6 +151,11 @@
 	};
 
 	const getItemsPage = async () => {
+		clearTimeout(searchDebounceTimer);
+		searchController?.abort();
+		searchController = new AbortController();
+		const { signal } = searchController;
+
 		itemsLoading = true;
 		const res = await searchKnowledgeBases(
 			localStorage.token,
@@ -145,10 +164,13 @@
 			page,
 			sourceOption,
 			sortKey,
-			sortDirection
+			sortDirection,
+			signal
 		).catch(() => {
 			return [];
 		});
+
+		if (signal.aborted) return;
 
 		if (res) {
 			console.log(res);
@@ -284,6 +306,8 @@
 	});
 </script>
 
+<WorkspaceAccessModal bind:this={accessModal} resourceType="knowledge" onUpdated={init} />
+
 <svelte:head>
 	<!-- LICENSE covers this Open WebUI browser-title identifier.
 	Do not alter, remove, obscure, or replace it except as LICENSE permits:
@@ -293,6 +317,9 @@
 	</title>
 </svelte:head>
 
+<h1 class="sr-only">{$i18n.t('Knowledge')}</h1>
+
+<Comments modal bind:view={comments} resourceType="knowledge">
 {#if loaded}
 	<DeleteConfirmDialog
 		bind:show={showDeleteConfirm}
@@ -301,8 +328,8 @@
 		}}
 	/>
 
-	<Modal bind:show={showCreateModal} size="md">
-		<CreateKnowledgeBase
+	<Modal bind:show={showCreateModal} size="md" ariaLabel={$i18n.t('Create a knowledge base')}>
+		<KnowledgeEditor
 			modal={true}
 			onBack={() => {
 				closeCreateModal();
@@ -347,7 +374,7 @@
 				{#if query}
 					<div class="self-center pl-1.5 translate-y-[0.5px] rounded-l-xl bg-transparent">
 						<button
-							class="p-0.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-900 transition"
+							class="py-0.5 rounded-full transition hover:text-gray-900 dark:hover:text-gray-100 text-gray-500 dark:text-gray-400 px-0"
 							aria-label={$i18n.t('Clear search')}
 							on:click={() => {
 								query = '';
@@ -396,16 +423,16 @@
 
 		{#if items !== null && total !== null}
 			{#if (items ?? []).length !== 0}
-				<div class="my-1">
+				<div class="@container">
 					<div
-						class="flex w-full items-center gap-2 px-1.5 pb-0.5 text-xs text-gray-400 dark:text-gray-600"
+						class="grid grid-cols-[minmax(0,1fr)_9rem_8rem_9.5rem] items-center gap-x-4 px-2 @max-[48rem]:grid-cols-[minmax(0,1fr)_7rem_9.5rem] @max-[48rem]:gap-x-3 @max-[36rem]:grid-cols-[minmax(0,1fr)_9.5rem] @max-[36rem]:gap-x-2 min-h-6 text-xs text-gray-500 dark:text-gray-400"
 					>
 						<button
 							class="flex min-w-0 flex-1 items-center gap-1 py-0.5 text-left"
 							type="button"
 							on:click={() => setSortKey('name')}
 						>
-							{$i18n.t('Title')}
+							{$i18n.t('Name')}
 							{#if sortKey === 'name'}
 								{#if sortDirection === 'asc'}
 									<ChevronUp className="size-2" />
@@ -415,10 +442,10 @@
 							{/if}
 						</button>
 
-						<div class="hidden w-44 shrink-0 md:block"></div>
+						<div class="@max-[48rem]:hidden">{$i18n.t('Owner')}</div>
 
 						<button
-							class="flex w-36 shrink-0 items-center justify-end gap-1 py-0.5 text-right"
+							class="@max-[36rem]:hidden flex min-w-0 items-center gap-1 py-0.5 text-left"
 							type="button"
 							on:click={() => setSortKey('updated_at')}
 						>
@@ -431,25 +458,18 @@
 								{/if}
 							{/if}
 						</button>
+						<span class="sr-only">{$i18n.t('Actions')}</span>
 					</div>
 
 					<div class="grid gap-y-0.5">
 						{#each items as item}
 							{@const metaPreview = getKnowledgeMetaPreview(item)}
 							<div
-								class="group flex min-h-8 w-full cursor-pointer items-center gap-2 overflow-hidden rounded-xl px-2 py-1 text-left"
-								role="button"
-								tabindex="0"
+								class="grid grid-cols-[minmax(0,1fr)_9rem_8rem_9.5rem] items-center gap-x-4 px-2 @max-[48rem]:grid-cols-[minmax(0,1fr)_7rem_9.5rem] @max-[48rem]:gap-x-3 @max-[36rem]:grid-cols-[minmax(0,1fr)_9.5rem] @max-[36rem]:gap-x-2 min-h-12 rounded-lg py-1.5 hover:bg-black/[0.03] dark:hover:bg-white/[0.03] group cursor-pointer text-left"
+								role="presentation"
 								on:click={(e) => {
 									if (shouldIgnoreRowClick(e.target)) return;
 									openKnowledge(item);
-								}}
-								on:keydown={(e) => {
-									if (e.currentTarget !== e.target) return;
-									if (e.key === 'Enter' || e.key === ' ') {
-										e.preventDefault();
-										openKnowledge(item);
-									}
 								}}
 							>
 								<div class="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
@@ -461,78 +481,108 @@
 													className="min-w-0"
 													placement="top-start"
 												>
-													<div
-														class="truncate text-[0.8125rem] leading-5 text-gray-800 group-hover:underline dark:text-gray-200"
-													>
-														{item.name}
-													</div>
+													{#if !item?.meta?.document}
+														<a
+															href={`/workspace/knowledge/${item.id}`}
+															class="focus-ring block truncate rounded text-[0.8125rem] leading-5 text-gray-800 group-hover:underline focus-visible:underline dark:text-gray-200"
+															>{item.name}</a
+														>
+													{:else}
+														<span
+															class="block truncate text-[0.8125rem] leading-5 text-gray-800 group-hover:underline dark:text-gray-200"
+															>{item.name}</span
+														>
+													{/if}
 												</Tooltip>
+												{#if !item?.write_access || item?.meta?.source === 'external'}
+													<Badge type="subtle" content={$i18n.t('Read Only')} />
+												{/if}
 
 												{#if item?.meta?.source === 'external'}
 													<Badge
 														type="muted"
 														content={item?.meta?.external?.provider ?? $i18n.t('Connected')}
 													/>
-													<Badge type="muted" content={$i18n.t('Read Only')} />
 												{/if}
-
-												{#if !item?.write_access && item?.meta?.source !== 'external'}
-													<Badge type="muted" content={$i18n.t('Read Only')} />
-												{/if}
-
-												<Tooltip content={dayjs(item.updated_at * 1000).format('LLLL')}>
-													<div
-														class="shrink-0 truncate text-[0.6875rem] leading-5 text-gray-400 dark:text-gray-600"
-													>
-														{dayjs(item.updated_at * 1000).fromNow()}
-													</div>
-												</Tooltip>
 											</div>
 										</div>
 
-										{#if metaPreview}
-											<Tooltip content={metaPreview} className="min-w-0" placement="top-start">
-												<div
-													class="mt-0.5 truncate text-[0.6875rem] leading-4 text-gray-400 dark:text-gray-600"
-												>
-													{metaPreview}
-												</div>
-											</Tooltip>
-										{/if}
+										<div class="mt-0.5 min-w-0">
+											{#if metaPreview}
+												<Tooltip content={metaPreview} className="min-w-0" placement="top-start">
+													<div class="truncate text-xs leading-4 text-gray-500 dark:text-gray-400">
+														{metaPreview}
+													</div>
+												</Tooltip>
+											{/if}
+										</div>
 									</div>
 								</div>
 
 								<div
-									class="hidden max-w-44 shrink-0 self-center truncate text-right text-[0.6875rem] leading-5 text-gray-500 dark:text-gray-500 md:block"
+									class="@max-[48rem]:hidden min-w-0 text-xs text-gray-600 dark:text-gray-400"
 								>
-									<Tooltip
-										content={item?.user?.email ?? $i18n.t('Deleted User')}
-										className="min-w-0"
-										placement="top-start"
+									<ProfilePreview
+										user={item?.user ?? null}
+										side="bottom"
+										className="w-full min-w-0"
 									>
-										<div class="truncate">
-											{capitalizeFirstLetter(
-												item?.user?.name ?? item?.user?.email ?? $i18n.t('Deleted User')
-											)}
-										</div>
-									</Tooltip>
+										<span class="flex w-full min-w-0 items-center gap-2">
+											<ProfileImage
+												src={item?.user?.id
+													? `/api/v1/users/${item.user.id}/profile/image`
+													: '/user.png'}
+												className="size-5 shrink-0 rounded-full!"
+											/>
+											<span class="min-w-0 truncate">
+												{capitalizeFirstLetter(
+													item?.user?.name ?? item?.user?.email ?? $i18n.t('Deleted User')
+												)}
+											</span>
+										</span>
+									</ProfilePreview>
 								</div>
-
-								{#if item?.write_access || $user?.role === 'admin'}
-									<div class="ml-2 flex shrink-0 flex-row items-center self-center">
-										<ItemMenu
-											onExport={$user?.role === 'admin'
-												? () => {
-														exportHandler(item);
-													}
-												: null}
-											on:delete={() => {
-												selectedItem = item;
-												showDeleteConfirm = true;
-											}}
-										/>
+								<Tooltip
+									content={dayjs(item.updated_at * 1000)
+										.locale($i18n.language)
+										.format('LLLL')}
+									className="@max-[36rem]:hidden min-w-0"
+								>
+									<div class="shrink-0 truncate text-xs leading-5 text-gray-500 dark:text-gray-400">
+										{dayjs(item.updated_at * 1000)
+											.locale($i18n.language)
+											.fromNow()}
 									</div>
-								{/if}
+								</Tooltip>
+								<div
+									class="flex min-w-0 items-center justify-end gap-1.5"
+								>
+									<CommentButton onComment={(request) => (comments = request)}
+										modal
+										className="flex size-6 shrink-0 items-center justify-center rounded-lg text-gray-400 transition dark:text-gray-500"
+										resource={{ resource_type: 'knowledge', resource_id: item.id }}
+									/>
+									{#if item?.write_access || $user?.role === 'admin'}
+										<div class="flex shrink-0 flex-row items-center self-center">
+											<ItemMenu onComment={(request) => (comments = request)}
+												resourceId={item.id}
+												accessHandler={$user?.permissions?.sharing?.knowledge ||
+												$user?.role === 'admin'
+													? () => accessModal.open(item.id)
+													: null}
+												onExport={$user?.role === 'admin'
+													? () => {
+															exportHandler(item);
+														}
+													: null}
+												on:delete={() => {
+													selectedItem = item;
+													showDeleteConfirm = true;
+												}}
+											/>
+										</div>
+									{/if}
+								</div>
 							</div>
 						{/each}
 					</div>
@@ -555,9 +605,13 @@
 			{:else}
 				<div class="flex w-full flex-col items-center justify-center py-16 pb-24">
 					<div class="max-w-sm text-center text-gray-900 dark:text-gray-100">
-						<div class="mb-1.5 text-sm">{$i18n.t('No knowledge found')}</div>
+						<div class="mb-1.5 text-sm">
+							{hasFilters ? $i18n.t('No knowledge found') : $i18n.t('No knowledge yet')}
+						</div>
 						<div class="text-center text-xs leading-5 text-gray-500">
-							{$i18n.t('Try adjusting your search or filter to find what you are looking for.')}
+							{hasFilters
+								? $i18n.t('Try adjusting your search or filter to find what you are looking for.')
+								: $i18n.t('Items you create or that are shared with you will appear here.')}
 						</div>
 					</div>
 				</div>
@@ -573,3 +627,4 @@
 		<Spinner className="size-5" />
 	</div>
 {/if}
+</Comments>

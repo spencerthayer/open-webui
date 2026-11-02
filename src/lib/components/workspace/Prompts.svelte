@@ -1,4 +1,10 @@
 <script lang="ts">
+	import Comments from '$lib/components/comments/Comments.svelte';
+	import type { CommentsRequest } from '$lib/components/comments/CommentsPanel.svelte';
+	let comments: CommentsRequest | null = null;
+	import CommentButton from '$lib/components/comments/CommentButton.svelte';
+	import WorkspaceAccessModal from './common/WorkspaceAccessModal.svelte';
+	let accessModal: WorkspaceAccessModal;
 	import dayjs from 'dayjs';
 	import relativeTime from 'dayjs/plugin/relativeTime';
 	import { toast } from 'svelte-sonner';
@@ -19,7 +25,8 @@
 		deletePromptById,
 		togglePromptById,
 		getPromptItems,
-		getPromptTags
+		getPromptTags,
+		getPrompts
 	} from '$lib/apis/prompts';
 	import { capitalizeFirstLetter, slugify, copyToClipboard } from '$lib/utils';
 
@@ -33,6 +40,8 @@
 	import Search from '../icons/Search.svelte';
 	import Spinner from '../common/Spinner.svelte';
 	import Tooltip from '../common/Tooltip.svelte';
+	import ProfilePreview from '$lib/components/channel/Messages/Message/ProfilePreview.svelte';
+	import ProfileImage from '$lib/components/chat/Messages/ProfileImage.svelte';
 	import XMark from '../icons/XMark.svelte';
 	import GarbageBin from '../icons/GarbageBin.svelte';
 	import ViewSelector from './common/ViewSelector.svelte';
@@ -67,6 +76,7 @@
 	let importFiles = null;
 	let query = '';
 	let searchDebounceTimer: ReturnType<typeof setTimeout>;
+	let searchController: AbortController;
 
 	let prompts = null;
 	let tags = [];
@@ -82,6 +92,8 @@
 	let viewOption = '';
 	let selectedTag = '';
 	let copiedId: string | null = null;
+	$: hasFilters = Boolean(query || viewOption || selectedTag);
+
 	let sortKey = 'updated_at';
 	let sortDirection = 'desc';
 	let openPromptMenuId: string | null = null;
@@ -108,7 +120,14 @@
 				id: 'prompts-export',
 				label: $i18n.t('Export JSON'),
 				onClick: async () => {
-					let blob = new Blob([JSON.stringify(prompts)], {
+					const _prompts = await getPrompts(localStorage.token).catch((error) => {
+						toast.error(`${error}`);
+						return null;
+					});
+					if (!_prompts) {
+						return;
+					}
+					let blob = new Blob([JSON.stringify(_prompts)], {
 						type: 'application/json'
 					});
 					saveAs(blob, `prompts-export-${Date.now()}.json`);
@@ -119,6 +138,7 @@
 	}
 
 	const handleSearchInput = () => {
+		searchController?.abort();
 		loading = true;
 		clearTimeout(searchDebounceTimer);
 		searchDebounceTimer = setTimeout(() => {
@@ -162,6 +182,11 @@
 	const getPromptList = async () => {
 		if (!loaded) return;
 
+		clearTimeout(searchDebounceTimer);
+		searchController?.abort();
+		searchController = new AbortController();
+		const { signal } = searchController;
+
 		loading = true;
 		try {
 			const res = await getPromptItems(
@@ -171,11 +196,14 @@
 				selectedTag,
 				sortKey,
 				sortDirection,
-				page
+				page,
+				signal
 			).catch((error) => {
-				toast.error(`${error}`);
+				if (!signal.aborted) toast.error(`${error}`);
 				return null;
 			});
+
+			if (signal.aborted) return;
 
 			if (res) {
 				prompts = res.items;
@@ -183,15 +211,16 @@
 				workspaceCounts.update((counts) => ({ ...counts, prompts: total }));
 
 				// get tags
-				tags = await getPromptTags(localStorage.token).catch((error) => {
-					toast.error(`${error}`);
+				const fetchedTags = await getPromptTags(localStorage.token).catch((error) => {
+					if (!signal.aborted) toast.error(`${error}`);
 					return [];
 				});
+				if (!signal.aborted) tags = fetchedTags;
 			}
 		} catch (err) {
 			console.error(err);
 		} finally {
-			loading = false;
+			if (!signal.aborted) loading = false;
 		}
 	};
 
@@ -239,10 +268,7 @@
 	};
 
 	const createPromptHandler = async (prompt: PromptDraft) => {
-		const res = await createNewPrompt(localStorage.token, prompt).catch((error) => {
-			toast.error(`${error}`);
-			return null;
-		});
+		const res = await createNewPrompt(localStorage.token, prompt);
 
 		if (res) {
 			toast.success($i18n.t('Prompt created successfully'));
@@ -250,6 +276,7 @@
 			await getPromptList();
 			await closeCreateModal();
 		}
+		return res;
 	};
 
 	const cloneHandler = async (prompt) => {
@@ -274,6 +301,7 @@
 	const copyHandler = async (prompt) => {
 		const res = await copyToClipboard(prompt.content);
 		if (res) {
+			toast.success($i18n.t('Copied to clipboard'));
 			copiedId = prompt.command;
 			setTimeout(() => {
 				copiedId = null;
@@ -353,9 +381,12 @@
 	});
 
 	onDestroy(() => {
+		searchController?.abort();
 		clearTimeout(searchDebounceTimer);
 	});
 </script>
+
+<WorkspaceAccessModal bind:this={accessModal} resourceType="prompts" onUpdated={getPromptList} />
 
 <svelte:head>
 	<!-- LICENSE covers this Open WebUI browser-title identifier.
@@ -366,6 +397,9 @@
 	</title>
 </svelte:head>
 
+<h1 class="sr-only">{$i18n.t('Prompts')}</h1>
+
+<Comments modal bind:view={comments} resourceType="prompt">
 {#if loaded}
 	<DeleteConfirmDialog
 		bind:show={showDeleteConfirm}
@@ -382,6 +416,7 @@
 	<Modal
 		bind:show={showCreateModal}
 		size="full"
+		ariaLabel={createPrompt !== null ? $i18n.t('Clone Prompt') : $i18n.t('Create Prompt')}
 		className="!w-[calc(100vw-2rem)] sm:!w-[calc(100vw-3rem)] lg:!w-[calc(100vw-4rem)] !max-w-[80rem] h-[min(54rem,calc(100dvh-4rem))] max-h-[calc(100dvh-4rem)] flex flex-col bg-white dark:bg-gray-900 rounded-4xl"
 	>
 		{#key createPrompt}
@@ -437,7 +472,7 @@
 		}}
 	/>
 
-	<div class="space-y-1">
+	<div class="space-y-0">
 		<div class="flex h-8 w-full items-center gap-2">
 			<div class="flex min-w-0 flex-1">
 				<div class=" self-center ml-1 mr-3">
@@ -454,7 +489,7 @@
 				{#if query}
 					<div class="self-center pl-1.5 translate-y-[0.5px] rounded-l-xl bg-transparent">
 						<button
-							class="p-0.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-900 transition"
+							class="py-0.5 rounded-full transition hover:text-gray-900 dark:hover:text-gray-100 text-gray-500 dark:text-gray-400 px-0"
 							aria-label={$i18n.t('Clear search')}
 							on:click={() => {
 								query = '';
@@ -510,16 +545,16 @@
 				<Spinner className="size-5" />
 			</div>
 		{:else if (prompts ?? []).length !== 0}
-			<div class="my-1">
+			<div class="@container">
 				<div
-					class="flex w-full items-center gap-2 px-1.5 pb-0.5 text-xs text-gray-400 dark:text-gray-600"
+					class="grid grid-cols-[minmax(0,1fr)_9rem_8rem_9.5rem] items-center gap-x-4 px-2 @max-[48rem]:grid-cols-[minmax(0,1fr)_7rem_9.5rem] @max-[48rem]:gap-x-3 @max-[36rem]:grid-cols-[minmax(0,1fr)_9.5rem] @max-[36rem]:gap-x-2 min-h-6 text-xs text-gray-500 dark:text-gray-400"
 				>
 					<button
 						class="flex min-w-0 flex-1 items-center gap-1 py-0.5 text-left"
 						type="button"
 						on:click={() => setSortKey('name')}
 					>
-						{$i18n.t('Title')}
+						{$i18n.t('Name')}
 						{#if sortKey === 'name'}
 							{#if sortDirection === 'asc'}
 								<ChevronUp className="size-2" />
@@ -529,10 +564,10 @@
 						{/if}
 					</button>
 
-					<div class="hidden w-44 shrink-0 md:block"></div>
+					<div class="@max-[48rem]:hidden">{$i18n.t('Owner')}</div>
 
 					<button
-						class="flex w-36 shrink-0 items-center justify-end gap-1 py-0.5 text-right"
+						class="@max-[36rem]:hidden flex min-w-0 items-center gap-1 py-0.5 text-left"
 						type="button"
 						on:click={() => setSortKey('updated_at')}
 					>
@@ -545,24 +580,17 @@
 							{/if}
 						{/if}
 					</button>
+					<span class="sr-only">{$i18n.t('Actions')}</span>
 				</div>
 
 				<div class="grid gap-y-0.5">
 					{#each prompts as prompt (prompt.id)}
 						<div
-							class="group flex min-h-8 w-full cursor-pointer items-center gap-2 overflow-hidden rounded-xl px-2 py-1 text-left"
-							role="button"
-							tabindex="0"
+							class="grid grid-cols-[minmax(0,1fr)_9rem_8rem_9.5rem] items-center gap-x-4 px-2 @max-[48rem]:grid-cols-[minmax(0,1fr)_7rem_9.5rem] @max-[48rem]:gap-x-3 @max-[36rem]:grid-cols-[minmax(0,1fr)_9.5rem] @max-[36rem]:gap-x-2 min-h-12 rounded-lg py-1.5 hover:bg-black/[0.03] dark:hover:bg-white/[0.03] group cursor-pointer text-left"
+							role="presentation"
 							on:click={(e) => {
 								if (shouldIgnoreRowClick(e.target)) return;
 								openPrompt(prompt);
-							}}
-							on:keydown={(e) => {
-								if (e.currentTarget !== e.target) return;
-								if (e.key === 'Enter' || e.key === ' ') {
-									e.preventDefault();
-									openPrompt(prompt);
-								}
 							}}
 						>
 							<div class="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
@@ -570,161 +598,185 @@
 									<div class="flex min-w-0 items-center gap-2 overflow-hidden">
 										<div class="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
 											<Tooltip content={prompt.name} className="min-w-0" placement="top-start">
-												<div
-													class="truncate text-[0.8125rem] leading-5 text-gray-800 group-hover:underline dark:text-gray-200"
+												<a
+													href={`/workspace/prompts/${prompt.id}`}
+													class="focus-ring block truncate rounded text-[0.8125rem] leading-5 text-gray-800 group-hover:underline focus-visible:underline dark:text-gray-200"
+													>{prompt.name}</a
 												>
-													{prompt.name}
-												</div>
 											</Tooltip>
-
-											<div
-												class="min-w-0 max-w-[40%] shrink-0 truncate text-[0.6875rem] leading-5 text-gray-500"
-											>
-												/{prompt.command}
-											</div>
-
-											<Tooltip
-												content={dayjs((prompt.updated_at ?? prompt.created_at) * 1000).format(
-													'LLLL'
-												)}
-											>
-												<div
-													class="shrink-0 truncate text-[0.6875rem] leading-5 text-gray-400 dark:text-gray-600"
-												>
-													{dayjs((prompt.updated_at ?? prompt.created_at) * 1000).fromNow()}
-												</div>
-											</Tooltip>
-
 											{#if !prompt.write_access}
-												<Badge type="muted" content={$i18n.t('Read Only')} />
+												<Badge type="subtle" content={$i18n.t('Read Only')} />
 											{/if}
 										</div>
 									</div>
 
-									{#if prompt.content}
-										<Tooltip content={prompt.content} className="min-w-0" placement="top-start">
-											<div
-												class="mt-0.5 truncate text-[0.6875rem] leading-4 text-gray-400 dark:text-gray-600"
-											>
-												{prompt.content}
-											</div>
-										</Tooltip>
-									{/if}
+									<div class="mt-0.5 min-w-0">
+										{#if prompt.content}
+											<Tooltip content={prompt.content} className="min-w-0" placement="top-start">
+												<div class="truncate text-xs leading-4 text-gray-500 dark:text-gray-400">
+													{prompt.content}
+												</div>
+											</Tooltip>
+										{/if}
+									</div>
 								</div>
 							</div>
 
 							<div
-								class="hidden max-w-44 shrink-0 self-center truncate text-right text-[0.6875rem] leading-5 text-gray-500 dark:text-gray-500 md:block"
+								class="@max-[48rem]:hidden min-w-0 text-xs text-gray-600 dark:text-gray-400"
 							>
-								<Tooltip
-									content={prompt?.user?.email ?? $i18n.t('Deleted User')}
-									className="min-w-0"
-									placement="top-start"
+								<ProfilePreview
+									user={prompt?.user ?? null}
+									side="bottom"
+									className="w-full min-w-0"
 								>
-									<div class="truncate">
-										{capitalizeFirstLetter(
-											prompt?.user?.name ?? prompt?.user?.email ?? $i18n.t('Deleted User')
-										)}
-									</div>
-								</Tooltip>
+									<span class="flex w-full min-w-0 items-center gap-2">
+										<ProfileImage
+											src={prompt?.user?.id
+												? `/api/v1/users/${prompt.user.id}/profile/image`
+												: '/user.png'}
+											className="size-5 shrink-0 rounded-full!"
+										/>
+										<span class="min-w-0 truncate">
+											{capitalizeFirstLetter(
+												prompt?.user?.name ?? prompt?.user?.email ?? $i18n.t('Deleted User')
+											)}
+										</span>
+									</span>
+								</ProfilePreview>
 							</div>
-
-							<div class="ml-2 flex shrink-0 flex-row items-center self-center">
-								{#if shiftKey}
-									<Tooltip content={$i18n.t('Delete')}>
-										<button
-											class="flex size-6 items-center justify-center rounded-lg text-gray-400 transition dark:text-gray-500"
-											type="button"
-											aria-label={$i18n.t('Delete')}
-											on:click={(e) => {
-												e.preventDefault();
-												e.stopPropagation();
-												deleteHandler(prompt);
-											}}
-										>
-											<GarbageBin className="size-4" />
-										</button>
-									</Tooltip>
-								{:else}
-									<Tooltip content={$i18n.t('Copy Prompt')}>
-										<button
-											class="flex size-6 items-center justify-center rounded-lg text-gray-400 transition dark:text-gray-500"
-											type="button"
-											aria-label={$i18n.t('Copy Prompt')}
-											on:click={(e) => {
-												e.preventDefault();
-												e.stopPropagation();
-												copyHandler(prompt);
-											}}
-										>
-											{#if copiedId === prompt.command}
-												<Check className="size-4" strokeWidth="1.5" />
-											{:else}
-												<Clipboard className="size-4" strokeWidth="1.5" />
-											{/if}
-										</button>
-									</Tooltip>
-
-									<div class="ml-0.5 flex shrink-0 flex-row items-center gap-1.5 self-center">
-										<PromptMenu
-											show={openPromptMenuId === prompt.id}
-											editHandler={() => {
-												goto(`/workspace/prompts/${prompt.id}`);
-											}}
-											shareHandler={() => {
-												shareHandler(prompt);
-											}}
-											cloneHandler={() => {
-												cloneHandler(prompt);
-											}}
-											exportHandler={() => {
-												exportHandler(prompt);
-											}}
-											deleteHandler={async () => {
-												deletePrompt = prompt;
-												showDeleteConfirm = true;
-											}}
-											onClose={() => {
-												openPromptMenuId = null;
-											}}
-										>
+							<Tooltip
+								content={dayjs((prompt.updated_at ?? prompt.created_at) * 1000)
+									.locale($i18n.language)
+									.format('LLLL')}
+								className="@max-[36rem]:hidden min-w-0"
+							>
+								<div class="shrink-0 truncate text-xs leading-5 text-gray-500 dark:text-gray-400">
+									{dayjs((prompt.updated_at ?? prompt.created_at) * 1000)
+										.locale($i18n.language)
+										.fromNow()}
+								</div>
+							</Tooltip>
+							<div class="flex min-w-0 items-center justify-end gap-1.5">
+								<div class="flex shrink-0 flex-row items-center gap-1.5 self-center">
+									{#if shiftKey}
+										<Tooltip content={$i18n.t('Delete')}>
 											<button
-												class="flex size-6 items-center justify-center rounded-lg text-gray-400 transition dark:text-gray-500"
+												class="flex size-6 items-center justify-center rounded-lg text-gray-400 transition dark:text-gray-500 disabled:opacity-50 disabled:cursor-not-allowed"
 												type="button"
-												aria-label={$i18n.t('Prompt Menu')}
+												aria-label={$i18n.t('Delete')}
+												disabled={!prompt.write_access}
 												on:click={(e) => {
 													e.preventDefault();
 													e.stopPropagation();
-													openPromptMenuId = openPromptMenuId === prompt.id ? null : prompt.id;
+													deleteHandler(prompt);
 												}}
 											>
-												<EllipsisHorizontal className="size-4" />
+												<GarbageBin className="size-4" />
 											</button>
-										</PromptMenu>
-
-										<button
-											class="flex h-6 items-center"
-											type="button"
-											on:click={(e) => {
-												e.stopPropagation();
-												e.preventDefault();
-											}}
-										>
-											<Tooltip
-												content={prompt.is_active !== false
-													? $i18n.t('Enabled')
-													: $i18n.t('Disabled')}
-											>
-												<Switch
-													bind:state={prompt.is_active}
-													on:change={async () => {
-														togglePromptById(localStorage.token, prompt.id);
+										</Tooltip>
+									{:else}
+										<div class="flex shrink-0 flex-row items-center gap-1.5 self-center">
+											<Tooltip content={$i18n.t('Copy Prompt')}>
+												<button
+													class="flex size-6 items-center justify-center rounded-lg text-gray-400 transition dark:text-gray-500"
+													type="button"
+													aria-label={$i18n.t('Copy Prompt')}
+													on:click={(e) => {
+														e.preventDefault();
+														e.stopPropagation();
+														copyHandler(prompt);
 													}}
-												/>
+												>
+													{#if copiedId === prompt.command}
+														<Check className="size-4" strokeWidth="1.5" />
+													{:else}
+														<Clipboard className="size-4" strokeWidth="1.5" />
+													{/if}
+												</button>
 											</Tooltip>
-										</button>
-									</div>
-								{/if}
+
+											<CommentButton onComment={(request) => (comments = request)}
+												modal
+												className="flex size-6 shrink-0 items-center justify-center rounded-lg text-gray-400 transition dark:text-gray-500"
+												resource={{ resource_type: 'prompt', resource_id: prompt.id }}
+											/>
+											<PromptMenu onComment={(request) => (comments = request)}
+												resourceId={prompt.id}
+												accessHandler={$user?.permissions?.sharing?.prompts ||
+												$user?.role === 'admin'
+													? () => accessModal.open(prompt.id)
+													: null}
+												writeAccess={prompt.write_access}
+												show={openPromptMenuId === prompt.id}
+												editHandler={() => {
+													goto(`/workspace/prompts/${prompt.id}`);
+												}}
+												shareHandler={() => {
+													shareHandler(prompt);
+												}}
+												cloneHandler={() => {
+													cloneHandler(prompt);
+												}}
+												exportHandler={() => {
+													exportHandler(prompt);
+												}}
+												deleteHandler={async () => {
+													deletePrompt = prompt;
+													showDeleteConfirm = true;
+												}}
+												onClose={() => {
+													openPromptMenuId = null;
+												}}
+											>
+												<button
+													class="flex size-6 items-center justify-center rounded-lg text-gray-400 transition dark:text-gray-500"
+													type="button"
+													aria-label={$i18n.t('Prompt Menu')}
+													on:click={(e) => {
+														e.preventDefault();
+														e.stopPropagation();
+														openPromptMenuId = openPromptMenuId === prompt.id ? null : prompt.id;
+													}}
+												>
+													<EllipsisHorizontal className="size-4" />
+												</button>
+											</PromptMenu>
+
+											{#if prompt.write_access}
+												<div
+													class="flex h-6 items-center"
+													role="presentation"
+													on:click={(e) => {
+														e.stopPropagation();
+														e.preventDefault();
+													}}
+												>
+													<Tooltip
+														content={prompt.is_active !== false
+															? $i18n.t('Enabled')
+															: $i18n.t('Disabled')}
+													>
+														<Switch
+															bind:state={prompt.is_active}
+															ariaLabel={$i18n.t('Enabled')}
+															on:change={async () => {
+																togglePromptById(localStorage.token, prompt.id);
+															}}
+														/>
+													</Tooltip>
+												</div>
+											{:else}
+												<Switch
+													state={prompt.is_active}
+													disabled
+													tooltip={$i18n.t('Read Only')}
+													ariaLabel={`${$i18n.t('Enabled')}: ${prompt.name}`}
+												/>
+											{/if}
+										</div>
+									{/if}
+								</div>
 							</div>
 						</div>
 					{/each}
@@ -739,9 +791,13 @@
 		{:else}
 			<div class="flex w-full flex-col items-center justify-center py-16 pb-24">
 				<div class="max-w-sm text-center text-gray-900 dark:text-gray-100">
-					<div class="mb-1.5 text-sm">{$i18n.t('No prompts found')}</div>
+					<div class="mb-1.5 text-sm">
+						{hasFilters ? $i18n.t('No prompts found') : $i18n.t('No prompts yet')}
+					</div>
 					<div class="text-center text-xs leading-5 text-gray-500">
-						{$i18n.t('Try adjusting your search or filter to find what you are looking for.')}
+						{hasFilters
+							? $i18n.t('Try adjusting your search or filter to find what you are looking for.')
+							: $i18n.t('Items you create or that are shared with you will appear here.')}
 					</div>
 				</div>
 			</div>
@@ -750,7 +806,7 @@
 
 	{#if $config?.features.enable_community_sharing}
 		<CommunityDiscover
-			href="https://openwebui.com/prompts"
+			href="https://openwebui.com/search?type=prompt"
 			title={$i18n.t('Discover a prompt')}
 			description={$i18n.t('Discover, download, and explore custom prompts')}
 		/>
@@ -760,3 +816,4 @@
 		<Spinner className="size-5" />
 	</div>
 {/if}
+</Comments>
